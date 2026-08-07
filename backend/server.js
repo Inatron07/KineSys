@@ -2,11 +2,17 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import path from "path";
+import dns from "dns";
 import { fileURLToPath } from "url";
 import nodemailer from "nodemailer";
 import { ChatSDK } from "@odin-ai-staging/sdk/dist/index.esm.js";
 
 dotenv.config();
+
+// Render (and several other hosts) don't route outbound IPv6, but Node
+// sometimes tries Gmail's IPv6 address first, causing ENETUNREACH.
+// Force IPv4-first DNS resolution so Nodemailer can actually reach Gmail.
+dns.setDefaultResultOrder("ipv4first");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
