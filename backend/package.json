@@ -1,0 +1,21 @@
+{
+  "name": "ekb-chatbot-demo",
+  "version": "1.0.0",
+  "description": "Automation Anywhere EKB API Chatbot Demo",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@elevenlabs/client": "0.12.2",
+    "@odin-ai-staging/sdk": "latest",
+    "cors": "latest",
+    "dotenv": "latest",
+    "express": "latest",
+    "nodemailer": "^9.0.5"
+  },
+  "overrides": {
+    "@elevenlabs/client": "0.12.2"
+  }
+}

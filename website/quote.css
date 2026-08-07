@@ -1,0 +1,180 @@
+/* ============================================================
+   Get a Quote page — dedicated styles
+   ============================================================ */
+
+.quote-wrap{
+  max-width:1100px;
+  margin:0 auto;
+  display:grid;
+  grid-template-columns:1fr 1.3fr;
+  gap:48px;
+  align-items:start;
+}
+
+.quote-badge{
+  display:inline-flex;align-items:center;gap:8px;
+  font-size:.8rem;color:var(--cyan);
+  background:rgba(34,211,238,.08);
+  border:1px solid rgba(34,211,238,.25);
+  padding:6px 14px;border-radius:20px;
+  margin-bottom:20px;
+}
+.quote-badge .dot{width:7px;height:7px;border-radius:50%;background:var(--cyan);display:inline-block;}
+
+.quote-title{
+  font-size:clamp(2rem,4vw,2.7rem);
+  line-height:1.15;
+  font-weight:700;
+  margin-bottom:16px;
+  letter-spacing:-0.02em;
+}
+.quote-title .grad{background:var(--grad-1);-webkit-background-clip:text;background-clip:text;color:transparent;}
+
+.quote-sub{
+  color:var(--muted);
+  font-size:1rem;
+  line-height:1.65;
+  margin-bottom:28px;
+  max-width:440px;
+}
+
+.quote-perks{display:flex;flex-direction:column;gap:16px;}
+.quote-perk{display:flex;align-items:center;gap:10px;font-size:.9rem;color:var(--text);opacity:.85;}
+.quote-perk span:first-child{font-size:1.1rem;}
+
+.quote-card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:32px;
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+
+.quote-row2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+
+.quote-field label{
+  display:block;
+  font-size:.78rem;
+  color:var(--muted);
+  margin-bottom:6px;
+  font-weight:600;
+}
+
+.quote-field input[type="text"],
+.quote-field input[type="email"],
+.quote-field input[type="tel"],
+.quote-field select,
+.quote-field textarea{
+  width:100%;
+  background:var(--surface2);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:11px 12px;
+  font-size:.88rem;
+  color:var(--text);
+  font-family:'Inter',sans-serif;
+  outline:none;
+  transition:border-color .15s;
+}
+.quote-field input:focus,
+.quote-field select:focus,
+.quote-field textarea:focus{border-color:var(--cyan);}
+.quote-field textarea{resize:vertical;min-height:64px;}
+.quote-field select{appearance:none;cursor:pointer;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6 5-6z' fill='%238a96b8'/></svg>");
+  background-repeat:no-repeat;
+  background-position:right 14px center;
+}
+.quote-field input::placeholder,
+.quote-field textarea::placeholder{color:#4c5776;}
+
+.quote-chips{display:flex;flex-wrap:wrap;gap:8px;}
+.quote-chip{
+  font-size:.78rem;
+  padding:7px 14px;
+  border-radius:20px;
+  background:var(--surface2);
+  border:1px solid var(--border);
+  color:var(--muted);
+  cursor:pointer;
+  transition:all .15s;
+  user-select:none;
+}
+.quote-chip:hover{border-color:rgba(34,211,238,.4);}
+.quote-chip.active{
+  background:rgba(34,211,238,.12);
+  border-color:var(--cyan);
+  color:var(--cyan);
+}
+
+.quote-conditional{display:flex;flex-direction:column;gap:14px;}
+.quote-conditional .quote-hint{color:#4c5776;font-weight:400;}
+
+.quote-process-list{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  background:var(--surface2);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:12px;
+}
+.quote-process-row{
+  display:flex;align-items:center;gap:10px;
+  font-size:.85rem;color:var(--text);
+  cursor:pointer;
+}
+.quote-process-row input[type="checkbox"]{
+  width:16px;height:16px;accent-color:var(--cyan);cursor:pointer;flex-shrink:0;
+}
+
+.quote-other-input{margin-top:8px;}
+
+.quote-submit{
+  margin-top:8px;
+  width:100%;
+  padding:14px;
+  border:none;
+  border-radius:8px;
+  background:var(--grad-1);
+  color:#04050a;
+  font-weight:700;
+  font-size:.95rem;
+  font-family:'Inter',sans-serif;
+  cursor:pointer;
+  box-shadow:0 0 30px rgba(34,211,238,.35);
+  transition:transform .2s, box-shadow .2s, opacity .2s;
+}
+.quote-submit:hover{transform:translateY(-2px);box-shadow:0 0 40px rgba(124,92,255,.5);}
+.quote-submit:disabled{opacity:.6;cursor:not-allowed;transform:none;}
+
+.quote-status{
+  font-size:.83rem;
+  text-align:center;
+  min-height:18px;
+}
+.quote-status.success{color:#2dffb0;}
+.quote-status.error{color:#ff6b6b;}
+
+.quote-trust{
+  text-align:center;
+  font-size:.75rem;
+  color:#4c5776;
+  margin-top:2px;
+}
+
+.quote-field.quote-error input,
+.quote-field.quote-error select,
+.quote-field.quote-error textarea{border-color:#ff6b6b;}
+
+@media (max-width:900px){
+  .quote-wrap{grid-template-columns:1fr;}
+  .quote-intro{order:1;}
+  .quote-card{order:2;}
+}
+@media (max-width:560px){
+  .quote-row2{grid-template-columns:1fr;}
+  .quote-card{padding:22px;}
+}

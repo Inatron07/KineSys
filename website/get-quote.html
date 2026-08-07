@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Get a Quote | KineSys</title>
+<meta name="description" content="Tell KineSys what you want to automate. Get a free, no-obligation quote — AI agents, RPA, custom software, or copilots.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="quote.css">
+<link rel="stylesheet" href="ina-chat.css?v=17">
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+</head>
+<body>
+
+<div class="grid-overlay"></div>
+<div class="blob blob1"></div>
+<div class="blob blob2"></div>
+<div class="blob blob3"></div>
+<div class="blob blob4"></div>
+
+<nav>
+  <div class="logo"><img src="logo.svg" alt="KineSys" class="logo-mark"><span class="logo-text">Kine<span class="accent">Sys</span></span></div>
+  <div class="nav-links">
+    <a href="index.html#offerings">Offerings</a>
+    <a href="work.html">Our Work</a>
+    <a href="index.html#tech">Tech Stack</a>
+    <a href="careers.html">Careers</a>
+    <a href="about.html">About Us</a>
+    <a href="index.html#contact">Contact</a>
+  </div>
+  <a href="get-quote.html" class="nav-cta">Get a Quote</a>
+</nav>
+
+<section class="section quote-section" style="padding-top:150px;padding-bottom:100px;">
+  <div class="quote-wrap">
+    <div class="quote-intro">
+      <div class="quote-badge"><span class="dot"></span> Free, no-obligation quote</div>
+      <h1 class="quote-title">Tell us what to <span class="grad">automate</span>.</h1>
+      <p class="quote-sub">A few details help us scope the right fix on the first call — agent, bot, or full build.</p>
+      <div class="quote-perks">
+        <div class="quote-perk"><span>⚡</span> Reply within 1 business day</div>
+        <div class="quote-perk"><span>🧭</span> Rough effort &amp; timeline on the call</div>
+        <div class="quote-perk"><span>🔒</span> Your details stay confidential</div>
+      </div>
+    </div>
+
+    <form class="quote-card" id="quoteForm" novalidate>
+      <div class="quote-row2">
+        <div class="quote-field">
+          <label for="qName">Full name *</label>
+          <input type="text" id="qName" name="name" placeholder="Priya Sharma" required>
+        </div>
+        <div class="quote-field">
+          <label for="qEmail">Work email *</label>
+          <input type="email" id="qEmail" name="email" placeholder="priya@company.com" required>
+        </div>
+      </div>
+
+      <div class="quote-row2">
+        <div class="quote-field">
+          <label for="qPhone">Phone number</label>
+          <input type="tel" id="qPhone" name="phone" placeholder="+91 90000 00000">
+        </div>
+        <div class="quote-field">
+          <label for="qCompany">Company name *</label>
+          <input type="text" id="qCompany" name="company" placeholder="Acme Logistics" required>
+        </div>
+      </div>
+
+      <div class="quote-row2">
+        <div class="quote-field">
+          <label for="qCompanySize">Company size</label>
+          <select id="qCompanySize" name="companySize">
+            <option value="">Select</option>
+            <option value="1-10">1-10</option>
+            <option value="11-50">11-50</option>
+            <option value="51-200">51-200</option>
+            <option value="200+">200+</option>
+          </select>
+        </div>
+        <div class="quote-field">
+          <label for="qIndustry">Industry</label>
+          <input type="text" id="qIndustry" name="industry" placeholder="e.g. Logistics, Retail, Insurance">
+        </div>
+      </div>
+
+      <div class="quote-field">
+        <label>What do you need help with? *</label>
+        <div class="quote-chips" id="qChips">
+          <span class="quote-chip active" data-chip="Agentic AI">🤖 Agentic AI</span>
+          <span class="quote-chip" data-chip="RPA">⚙️ RPA</span>
+          <span class="quote-chip" data-chip="Custom Software">📊 Custom Software</span>
+          <span class="quote-chip" data-chip="Copilots &amp; Outreach">🚀 Copilots &amp; Outreach</span>
+          <span class="quote-chip" data-chip="Not sure yet">🤷 Not sure yet</span>
+        </div>
+      </div>
+
+      <div id="qConditional" class="quote-conditional"></div>
+
+      <div class="quote-field">
+        <label for="qProblem">What problem are you trying to solve? *</label>
+        <textarea id="qProblem" name="problem" rows="3" placeholder="We get about 200 invoices a week, all manual entry into Tally..." required></textarea>
+      </div>
+
+      <div class="quote-row2">
+        <div class="quote-field">
+          <label for="qBudget">Estimated budget</label>
+          <select id="qBudget" name="budget">
+            <option value="">Select</option>
+            <option value="<$5K">Under $5K</option>
+            <option value="$5K-$20K">$5K - $20K</option>
+            <option value="$20K-$50K">$20K - $50K</option>
+            <option value="$50K+">$50K+</option>
+            <option value="Not sure">Not sure yet</option>
+          </select>
+        </div>
+        <div class="quote-field">
+          <label for="qTimeline">Timeline</label>
+          <select id="qTimeline" name="timeline">
+            <option value="">Select</option>
+            <option value="ASAP">ASAP</option>
+            <option value="1-3 months">1-3 months</option>
+            <option value="3-6 months">3-6 months</option>
+            <option value="Just exploring">Just exploring</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="quote-field">
+        <label for="qHear">How did you hear about us? (optional)</label>
+        <select id="qHear" name="hearAbout">
+          <option value="">Select</option>
+          <option value="Google search">Google search</option>
+          <option value="LinkedIn">LinkedIn</option>
+          <option value="Referral">Referral</option>
+          <option value="Social media">Social media</option>
+          <option value="Event / conference">Event / conference</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+
+      <button type="submit" class="quote-submit" id="qSubmitBtn">Request My Quote &rarr;</button>
+      <div class="quote-status" id="qStatus"></div>
+      <div class="quote-trust">&#128737; Secure &middot; Reply within 1 business day &middot; No obligation</div>
+    </form>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <div class="logo"><img src="logo.svg" alt="KineSys" class="logo-mark"><span class="logo-text">Kine<span class="accent">Sys</span></span></div>
+          <p>KineSys is an AI & Software Automation studio building agents, RPA bots, and custom software that businesses can actually run and maintain. Based out of Goa and Bangalore, with our main office in Dubai.</p>
+      <div class="footer-socials">
+        <a href="#" aria-label="Facebook">f</a>
+        <a href="#" aria-label="X">X</a>
+        <a href="#" aria-label="LinkedIn">in</a>
+        <a href="#" aria-label="Instagram">◎</a>
+      </div>
+    </div>
+    <div class="footer-col">
+      <h4>About</h4>
+      <ul>
+        <li><a href="about.html">About Us</a></li>
+        <li><a href="index.html#why">Why Us</a></li>
+        <li><a href="index.html#tech">Our Stack</a></li>
+        <li><a href="careers.html">Careers</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4>Company</h4>
+      <ul>
+        <li><a href="index.html#offerings">Agentic AI Automation</a></li>
+        <li><a href="index.html#offerings">RPA</a></li>
+        <li><a href="index.html#offerings">Custom Software Solutions</a></li>
+        <li><a href="index.html#offerings">Web, Copilots & Outreach</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4>Resources</h4>
+      <ul>
+        <li><a href="work.html">Case Studies</a></li>
+        <li><a href="index.html#tech">Tech Stack</a></li>
+        <li><a href="index.html#work">Our Work</a></li>
+        <li><a href="get-quote.html">Get a Quote</a></li>
+      </ul>
+    </div>
+    <div class="footer-col" id="contact">
+      <h4>Contact Us</h4>
+      <ul>
+        <li><a href="tel:+971505853891">📞 🇦🇪 +971 50 585 3891</a></li>
+        <li><a href="tel:+971585846540">📞 🇦🇪 +971 58 584 6540</a></li>
+        <li><a href="tel:+919604139376">📞 🇮🇳 +91 96041 39376</a></li>
+        <li><a href="tel:+919422442484">📞 🇮🇳 +91 94224 42484</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <div>© 2026 KineSys LLC. All Rights Reserved.</div>
+    <div>AI & Software Automation Solutions</div>
+  </div>
+</footer>
+
+<script src="script.js"></script>
+<script src="quote.js?v=1"></script>
+
+<!-- Ina chat widget (custom) -->
+<script src="ina-chat.js?v=19" defer></script>
+</body>
+</html>
