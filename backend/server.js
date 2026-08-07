@@ -2,17 +2,11 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import path from "path";
-import dns from "dns";
 import { fileURLToPath } from "url";
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 import { ChatSDK } from "@odin-ai-staging/sdk/dist/index.esm.js";
 
 dotenv.config();
-
-// Render (and several other hosts) don't route outbound IPv6, but Node
-// sometimes tries Gmail's IPv6 address first, causing ENETUNREACH.
-// Force IPv4-first DNS resolution so Nodemailer can actually reach Gmail.
-dns.setDefaultResultOrder("ipv4first");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -31,18 +25,20 @@ const chatSDK = new ChatSDK({
   apiSecret: process.env.EKB_API_SECRET
 });
 
-// Mailer for Ina's "talk to a human" lead handoff — sends from your
-// Gmail account via an App Password (never a real account password).
-// Set GMAIL_USER / GMAIL_APP_PASSWORD / LEAD_NOTIFY_EMAIL in .env.
-const mailTransporter = (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD)
-  ? nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD
-      }
-    })
-  : null;
+// Mailer for lead handoff / visitor notifications / transcripts / quote
+// requests. Uses Resend's HTTP API rather than raw SMTP — hosts like
+// Render's free tier block outbound SMTP ports, so this is the reliable
+// path. Set RESEND_API_KEY (plus LEAD_NOTIFY_EMAIL / QUOTE_NOTIFY_EMAIL)
+// in .env. The "from" address must be on a domain verified in Resend.
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const MAIL_FROM = "KineSys <notifications@kinesys.net>";
+
+function parseRecipients(value) {
+  return (value || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
 app.post("/api/chat", async (req, res) => {
   try {
@@ -112,19 +108,19 @@ app.post("/api/send-lead", async (req, res) => {
       return res.status(400).json({ error: "Name and contact are required." });
     }
 
-    if (!mailTransporter) {
+    if (!resend) {
       return res.status(503).json({
         error: "Email is not configured on the server yet.",
-        details: "Set GMAIL_USER and GMAIL_APP_PASSWORD in .env, then restart the server."
+        details: "Set RESEND_API_KEY in .env, then restart the server."
       });
     }
 
-    const notifyTo = process.env.LEAD_NOTIFY_EMAIL || process.env.GMAIL_USER;
+    const notifyTo = process.env.LEAD_NOTIFY_EMAIL;
     const prefersLabel = who || "either";
 
-    await mailTransporter.sendMail({
-      from: `"Ina (KineSys)" <${process.env.GMAIL_USER}>`,
-      to: notifyTo,
+    await resend.emails.send({
+      from: MAIL_FROM,
+      to: parseRecipients(notifyTo),
       replyTo: contact.includes("@") ? contact : undefined,
       subject: `New lead from Ina — ${name}`,
       text:
@@ -155,19 +151,19 @@ app.post("/api/notify-visitor", async (req, res) => {
       return res.status(400).json({ error: "Name and contact are required." });
     }
 
-    if (!mailTransporter) {
+    if (!resend) {
       return res.status(503).json({
         error: "Email is not configured on the server yet.",
-        details: "Set GMAIL_USER and GMAIL_APP_PASSWORD in .env, then restart the server."
+        details: "Set RESEND_API_KEY in .env, then restart the server."
       });
     }
 
-    const notifyTo = process.env.LEAD_NOTIFY_EMAIL || process.env.GMAIL_USER;
+    const notifyTo = process.env.LEAD_NOTIFY_EMAIL;
     const when = startedAt || new Date().toLocaleString();
 
-    await mailTransporter.sendMail({
-      from: `"Ina (KineSys)" <${process.env.GMAIL_USER}>`,
-      to: notifyTo,
+    await resend.emails.send({
+      from: MAIL_FROM,
+      to: parseRecipients(notifyTo),
       replyTo: contact.includes("@") ? contact : undefined,
       subject: `New Ina chat started — ${name}`,
       text:
@@ -199,18 +195,18 @@ app.post("/api/send-transcript", async (req, res) => {
       return res.status(400).json({ error: "Name, contact, and transcript are required." });
     }
 
-    if (!mailTransporter) {
+    if (!resend) {
       return res.status(503).json({
         error: "Email is not configured on the server yet.",
-        details: "Set GMAIL_USER and GMAIL_APP_PASSWORD in .env, then restart the server."
+        details: "Set RESEND_API_KEY in .env, then restart the server."
       });
     }
 
-    const notifyTo = process.env.LEAD_NOTIFY_EMAIL || process.env.GMAIL_USER;
+    const notifyTo = process.env.LEAD_NOTIFY_EMAIL;
 
-    await mailTransporter.sendMail({
-      from: `"Ina (KineSys)" <${process.env.GMAIL_USER}>`,
-      to: notifyTo,
+    await resend.emails.send({
+      from: MAIL_FROM,
+      to: parseRecipients(notifyTo),
       replyTo: contact.includes("@") ? contact : undefined,
       subject: `Ina chat transcript — ${name}`,
       text: transcript
@@ -241,14 +237,14 @@ app.post("/api/get-quote", async (req, res) => {
       return res.status(400).json({ error: "Name, email, company, service, and problem description are required." });
     }
 
-    if (!mailTransporter) {
+    if (!resend) {
       return res.status(503).json({
         error: "Email is not configured on the server yet.",
-        details: "Set GMAIL_USER and GMAIL_APP_PASSWORD in .env, then restart the server."
+        details: "Set RESEND_API_KEY in .env, then restart the server."
       });
     }
 
-    const notifyTo = process.env.QUOTE_NOTIFY_EMAIL || process.env.LEAD_NOTIFY_EMAIL || process.env.GMAIL_USER;
+    const notifyTo = process.env.QUOTE_NOTIFY_EMAIL || process.env.LEAD_NOTIFY_EMAIL;
     const when = submittedAt || new Date().toLocaleString();
     const processList = Array.isArray(processes) && processes.length ? processes.join(", ") : "-";
 
@@ -277,9 +273,9 @@ app.post("/api/get-quote", async (req, res) => {
       `— Sent automatically by the Get a Quote page`
     ];
 
-    await mailTransporter.sendMail({
-      from: `"KineSys Website" <${process.env.GMAIL_USER}>`,
-      to: notifyTo,
+    await resend.emails.send({
+      from: MAIL_FROM,
+      to: parseRecipients(notifyTo),
       replyTo: email,
       subject: `New quote request — ${name} (${company})`,
       text: lines.join("\n")

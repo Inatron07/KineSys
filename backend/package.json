@@ -13,7 +13,7 @@
     "cors": "latest",
     "dotenv": "latest",
     "express": "latest",
-    "nodemailer": "^9.0.5"
+    "resend": "latest"
   },
   "overrides": {
     "@elevenlabs/client": "0.12.2"
