@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  var BACKEND_QUOTE_URL = 'https://kinesys.onrender.com/api/get-quote';
+  var BACKEND_QUOTE_URL = 'http://localhost:3001/api/get-quote';
 
   var AI_CATEGORIES = {
     'Agentic Workflows': ['Multi-step process orchestration', 'ERP & CRM-connected agents', 'Decision-support & approvals', 'Cross-agent coordination'],

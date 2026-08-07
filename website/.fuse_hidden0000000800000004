@@ -49,9 +49,9 @@
   // first. Change this URL if the backend runs somewhere else, or to
   // a relative '/api/chat' once this site is served by that same
   // Express server (see server.js's express.static line).
-  const BACKEND_CHAT_URL = 'https://kinesys.onrender.com/api/chat';
-  const BACKEND_NOTIFY_URL = 'https://kinesys.onrender.com/api/notify-visitor';
-  const BACKEND_TRANSCRIPT_URL = 'https://kinesys.onrender.com/api/send-transcript';
+  const BACKEND_CHAT_URL = 'http://localhost:3001/api/chat';
+  const BACKEND_NOTIFY_URL = 'http://localhost:3001/api/notify-visitor';
+  const BACKEND_TRANSCRIPT_URL = 'http://localhost:3001/api/send-transcript';
 
   // Simple spam guard: at most 5 sends (typed messages, quick
   // actions, or follow-up chips) per rolling 60-second window.
