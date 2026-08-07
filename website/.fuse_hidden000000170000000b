@@ -41,7 +41,7 @@
     conditional.innerHTML = '';
     catSelect = null; catOtherInput = null; procList = null; procOtherInput = null;
 
-    var map = activeNeed === 'Agentic AI' ? AI_CATEGORIES : activeNeed === 'Automation' ? RPA_CATEGORIES : null;
+    var map = activeNeed === 'Agentic AI' ? AI_CATEGORIES : activeNeed === 'RPA' ? RPA_CATEGORIES : null;
     if (!map) return;
 
     var catLabel = activeNeed === 'Agentic AI' ? 'AI category' : 'Process area';

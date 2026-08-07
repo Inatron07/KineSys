@@ -75,6 +75,15 @@ nav{
   font-weight:700;font-size:1.3rem;letter-spacing:-0.02em;color:var(--text);
   display:inline-flex;align-items:center;gap:10px;
 }
+.nav-left{display:flex;align-items:center;gap:16px;}
+.nav-home-btn{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:.82rem;font-weight:600;color:var(--muted);
+  background:var(--surface2);border:1px solid var(--border);
+  padding:8px 14px;border-radius:999px;
+  transition:color .2s, border-color .2s, background .2s;
+}
+.nav-home-btn:hover{color:var(--cyan);border-color:var(--cyan);background:rgba(34,211,238,.08);}
 .logo-text{white-space:nowrap;}
 .accent{background:var(--grad-1);-webkit-background-clip:text;background-clip:text;color:transparent;}
 .logo-mark{width:36px;height:36px;display:block;flex-shrink:0;filter:drop-shadow(0 0 10px rgba(124,92,255,.35));}

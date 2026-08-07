@@ -20,10 +20,7 @@
 <div class="blob blob4"></div>
 
 <nav>
-  <div class="nav-left">
-    <a href="index.html" class="nav-home-btn">&larr; Home</a>
-    <a href="index.html" class="logo"><img src="logo.svg" alt="KineSys" class="logo-mark"><span class="logo-text">Kine<span class="accent">Sys</span></span></a>
-  </div>
+  <a href="index.html" class="logo"><img src="logo.svg" alt="KineSys" class="logo-mark"><span class="logo-text">Kine<span class="accent">Sys</span></span></a>
   <div class="nav-links">
     <a href="index.html#offerings">Offerings</a>
     <a href="work.html">Our Work</a>

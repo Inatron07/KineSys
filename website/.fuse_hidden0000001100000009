@@ -21,10 +21,7 @@
 <div class="blob blob4"></div>
 
 <nav>
-  <div class="nav-left">
-    <a href="index.html" class="nav-home-btn">&larr; Home</a>
-    <a href="index.html" class="logo"><img src="logo.svg" alt="KineSys" class="logo-mark"><span class="logo-text">Kine<span class="accent">Sys</span></span></a>
-  </div>
+  <div class="logo"><img src="logo.svg" alt="KineSys" class="logo-mark"><span class="logo-text">Kine<span class="accent">Sys</span></span></div>
   <div class="nav-links">
     <a href="index.html#offerings">Offerings</a>
     <a href="work.html">Our Work</a>
@@ -93,7 +90,7 @@
         <label>What do you need help with? *</label>
         <div class="quote-chips" id="qChips">
           <span class="quote-chip active" data-chip="Agentic AI">🤖 Agentic AI</span>
-          <span class="quote-chip" data-chip="Automation">⚙️ Automation</span>
+          <span class="quote-chip" data-chip="RPA">⚙️ RPA</span>
           <span class="quote-chip" data-chip="Custom Software">📊 Custom Software</span>
           <span class="quote-chip" data-chip="Copilots &amp; Outreach">🚀 Copilots &amp; Outreach</span>
           <span class="quote-chip" data-chip="Not sure yet">🤷 Not sure yet</span>
