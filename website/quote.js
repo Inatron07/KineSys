@@ -31,7 +31,7 @@
 
   if (!form) return;
 
-  var activeNeed = 'Agentic AI';
+  var activeNeed = 'InaIntelligence';
   var catSelect = null;
   var catOtherInput = null;
   var procList = null;
@@ -41,10 +41,10 @@
     conditional.innerHTML = '';
     catSelect = null; catOtherInput = null; procList = null; procOtherInput = null;
 
-    var map = activeNeed === 'Agentic AI' ? AI_CATEGORIES : activeNeed === 'Automation' ? RPA_CATEGORIES : null;
+    var map = activeNeed === 'Agentic AI' ? AI_CATEGORIES : (activeNeed === 'Automation' || activeNeed === 'InaIntelligence') ? RPA_CATEGORIES : null;
     if (!map) return;
 
-    var catLabel = activeNeed === 'Agentic AI' ? 'AI category' : 'Process area';
+    var catLabel = activeNeed === 'Agentic AI' ? 'AI category' : activeNeed === 'InaIntelligence' ? 'Dashboard area' : 'Process area';
 
     var catField = document.createElement('div');
     catField.className = 'quote-field';
@@ -217,8 +217,8 @@
       .then(function () {
         setStatus('Thanks! Your quote request is in — we\'ll be in touch within 1 business day.', 'success');
         form.reset();
-        chips.forEach(function (c) { c.classList.toggle('active', c.getAttribute('data-chip') === 'Agentic AI'); });
-        activeNeed = 'Agentic AI';
+        chips.forEach(function (c) { c.classList.toggle('active', c.getAttribute('data-chip') === 'InaIntelligence'); });
+        activeNeed = 'InaIntelligence';
         renderConditional();
       })
       .catch(function () {

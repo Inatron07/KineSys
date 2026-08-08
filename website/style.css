@@ -244,6 +244,17 @@ h1.title .grad{
 .heatmap-arrow.right{right:1%;}
 @media (max-width:640px){.heatmap-arrow{display:none;}}
 
+.swipe-hint{
+  display:none;align-items:center;justify-content:center;gap:6px;
+  font-size:.75rem;color:var(--muted);margin:-6px 0 14px;
+}
+.swipe-hint .swipe-hint-icon{display:inline-block;animation:swipe-hint-bounce 1.6s ease-in-out infinite;}
+@media (max-width:640px){.swipe-hint{display:flex;}}
+@keyframes swipe-hint-bounce{0%,100%{transform:translateX(0);}50%{transform:translateX(4px);}}
+
+.ina-cta-row{display:flex;justify-content:center;margin:26px 0 4px;}
+
+
 /* ===== City showcase ===== */
 .city-grid{
   max-width:1100px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:24px;
