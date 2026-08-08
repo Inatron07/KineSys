@@ -31,10 +31,7 @@
     <a href="careers.html">Careers</a>
     <a href="about.html">About Us</a>
   </div>
-  <div class="nav-actions">
-    <a href="get-quote.html" class="nav-cta">Get a Quote</a>
-    <a href="get-quote.html" class="nav-login-btn"><img src="logo.svg" alt="" class="nav-login-icon">InaIntelligence Login</a>
-  </div>
+  <a href="get-quote.html" class="nav-cta">Get a Quote</a>
 </nav>
 
 <header class="hero" style="min-height:55vh;padding-top:160px;">

@@ -32,10 +32,7 @@
     <a href="about.html">About Us</a>
     <a href="index.html#contact">Contact</a>
   </div>
-  <div class="nav-actions">
-    <a href="get-quote.html" class="nav-cta">Get a Quote</a>
-    <a href="get-quote.html" class="nav-login-btn"><img src="logo.svg" alt="" class="nav-login-icon">InaIntelligence Login</a>
-  </div>
+  <a href="get-quote.html" class="nav-cta">Get a Quote</a>
 </nav>
 
 <header class="hero" style="min-height:60vh;padding-top:160px;">
