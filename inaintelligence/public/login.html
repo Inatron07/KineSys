@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InaIntelligence Login | KineSys</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="grid-overlay"></div>
+<div class="blob blob1"></div>
+<div class="blob blob2"></div>
+<div class="blob blob3"></div>
+<div class="blob blob4"></div>
+
+<div class="login-shell">
+  <div class="login-pitch">
+    <div class="login-brand"><img src="logo.svg" class="logo-mark" alt="KineSys"> Kine<span class="accent">Sys</span><span class="brand-sep">/</span>InaIntelligence</div>
+    <div class="kicker">The KineSys Platform</div>
+    <h1>Run your business on InaIntelligence</h1>
+    <p>One live dashboard per process you automate, paired with Ina — your personal AI agent who watches, flags, and acts, with your approval.</p>
+    <ul>
+      <li>Real-time pipeline &amp; ops visibility</li>
+      <li>Ina takes action, you stay in control</li>
+      <li>Every credit and click, tracked</li>
+    </ul>
+  </div>
+  <div class="login-form-wrap">
+    <div class="login-form">
+      <h2>Log in</h2>
+      <div class="error-msg" id="errorMsg"></div>
+      <form id="loginForm">
+        <div class="field">
+          <label for="username">Username</label>
+          <input type="text" id="username" placeholder="you@kinesys.net" autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" placeholder="••••••••••" autocomplete="current-password" required>
+        </div>
+        <button type="submit" class="btn btn-primary" id="loginBtn">Log in to InaIntelligence →</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="login.js"></script>
+</body>
+</html>

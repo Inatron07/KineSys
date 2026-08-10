@@ -1,0 +1,166 @@
+'use strict';
+
+const bcrypt = require('bcryptjs');
+
+function id(prefix) {
+  return prefix + '_' + Math.random().toString(36).slice(2, 9);
+}
+
+function hash(pw) {
+  return bcrypt.hashSync(pw, 8);
+}
+
+function rand(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function now() {
+  return Date.now();
+}
+
+// ---- Automations available to admin accounts (Sales vertical, MVP) ----
+const ACTIONS = {
+  find_leads: {
+    label: 'Read emails & find new leads',
+    icon: '📧',
+    run(account) {
+      const count = rand(1, 4);
+      const names = ['Ankit Verma', 'Sara Iqbal', 'Marco Reyes', 'Fatima Noor', 'Declan Shaw', 'Priyanka Rao', 'Tom Halvorsen', 'Wei Chen'];
+      const companies = ['Zenith Retail', 'Nova Freight', 'BluePeak Logistics', 'Harbor & Co', 'Crestline Manufacturing', 'Solstice Insurance'];
+      const added = [];
+      for (let i = 0; i < count; i++) {
+        const lead = {
+          id: id('lead'),
+          name: names[rand(0, names.length - 1)],
+          company: companies[rand(0, companies.length - 1)],
+          status: 'New',
+          source: 'Ina — inbox scan',
+          lastContacted: null,
+          createdAt: now()
+        };
+        account.leads.unshift(lead);
+        added.push(lead.name);
+      }
+      return {
+        credits: rand(80, 220),
+        summary: `Ina scanned the inbox and found ${count} new lead${count === 1 ? '' : 's'}: ${added.join(', ')}.`
+      };
+    }
+  },
+  score_leads: {
+    label: 'Score leads',
+    icon: '🎯',
+    run(account) {
+      const candidates = account.leads.filter((l) => l.status === 'New' || l.status === 'Contacted');
+      const touched = candidates.slice(0, rand(1, Math.min(3, candidates.length || 1)));
+      let hot = 0, cold = 0;
+      touched.forEach((l) => {
+        if (Math.random() > 0.45) { l.status = 'Hot'; hot++; }
+        else { l.status = 'Cold'; cold++; }
+      });
+      return {
+        credits: rand(40, 120),
+        summary: touched.length
+          ? `Ina scored ${touched.length} lead${touched.length === 1 ? '' : 's'} — ${hot} marked hot, ${cold} marked cold.`
+          : 'Ina scored the pipeline — no unscored leads left to review.'
+      };
+    }
+  },
+  send_followup: {
+    label: 'Send follow-up',
+    icon: '✉️',
+    run(account) {
+      const candidates = account.leads.filter((l) => l.status === 'Contacted' || l.status === 'Hot');
+      const touched = candidates.slice(0, rand(1, Math.min(3, candidates.length || 1)));
+      let converted = 0;
+      touched.forEach((l) => {
+        l.lastContacted = 'Today';
+        if (l.status === 'Hot' && Math.random() > 0.6) { l.status = 'Converted'; converted++; }
+      });
+      return {
+        credits: rand(20, 60),
+        summary: touched.length
+          ? `Ina sent follow-ups to ${touched.length} lead${touched.length === 1 ? '' : 's'}${converted ? `, ${converted} converted` : ''}.`
+          : 'No contacted or hot leads needed a follow-up right now.'
+      };
+    }
+  }
+};
+
+function newLead(overrides) {
+  return Object.assign({
+    id: id('lead'),
+    name: 'Lead',
+    company: 'Company',
+    status: 'New',
+    source: 'Manual',
+    lastContacted: null,
+    createdAt: now()
+  }, overrides);
+}
+
+function makeSalesAccount(opts) {
+  return {
+    id: opts.id,
+    name: opts.name,
+    type: 'sales',
+    pipelineLabel: 'Leads',
+    statuses: ['New', 'Contacted', 'Hot', 'Cold', 'Converted'],
+    status: 'active',
+    creditLimit: opts.creditLimit,
+    creditsUsed: opts.creditsUsedSeed,
+    actionsTriggered: opts.actionsSeed,
+    leads: opts.leads,
+    team: opts.team,
+    activity: opts.activity
+  };
+}
+
+const db = {
+  superAdmins: [
+    { username: 'inatron@kinesys.net', passwordHash: hash('super123'), name: 'Inacio Fernandes' }
+  ],
+  accounts: [
+    makeSalesAccount({
+      id: 'acc-sales',
+      name: 'Sales — Priya Sharma',
+      creditLimit: 10000,
+      creditsUsedSeed: 4120,
+      actionsSeed: 58,
+      leads: [
+        newLead({ name: 'Ankit Verma', company: 'Zenith Retail', status: 'Hot', source: 'Ina — inbox scan', lastContacted: 'Today' }),
+        newLead({ name: 'Sara Iqbal', company: 'Nova Freight', status: 'New', source: 'Website form' }),
+        newLead({ name: 'Marco Reyes', company: 'Harbor & Co', status: 'Contacted', source: 'LinkedIn', lastContacted: 'Yesterday' }),
+        newLead({ name: 'Fatima Noor', company: 'Crestline Mfg', status: 'Cold', source: 'Referral', lastContacted: '5 days ago' }),
+        newLead({ name: 'Declan Shaw', company: 'Solstice Insurance', status: 'Converted', source: 'Event', lastContacted: '2 weeks ago' })
+      ],
+      team: [
+        { id: id('user'), name: 'Priya Sharma', username: 'priya@kinesys.net', passwordHash: hash('sales123'), isPrimary: true },
+        { id: id('user'), name: 'Karan Bhatt', username: 'karan@kinesys.net', passwordHash: hash('sales123') }
+      ],
+      activity: [
+        { id: id('act'), text: 'Ina scanned the inbox and found 3 new leads.', at: now() - 1000 * 60 * 12 },
+        { id: id('act'), text: 'Priya added Karan Bhatt to the team.', at: now() - 1000 * 60 * 60 * 4 }
+      ]
+    }),
+    makeSalesAccount({
+      id: 'acc-sales-dubai',
+      name: 'Sales — Dubai Team',
+      creditLimit: 8000,
+      creditsUsedSeed: 2940,
+      actionsSeed: 31,
+      leads: [
+        newLead({ name: 'Tom Halvorsen', company: 'BluePeak Logistics', status: 'New', source: 'Ina — inbox scan' }),
+        newLead({ name: 'Wei Chen', company: 'Solstice Insurance', status: 'Hot', source: 'LinkedIn', lastContacted: 'Today' })
+      ],
+      team: [
+        { id: id('user'), name: 'Rohan Mehta', username: 'rohan@kinesys.net', passwordHash: hash('sales123'), isPrimary: true }
+      ],
+      activity: [
+        { id: id('act'), text: 'Ina sent follow-ups to 2 leads.', at: now() - 1000 * 60 * 45 }
+      ]
+    })
+  ]
+};
+
+module.exports = { db, ACTIONS, id, hash, now, rand };

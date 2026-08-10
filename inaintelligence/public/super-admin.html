@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Super Admin | InaIntelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="grid-overlay"></div>
+<div class="blob blob1"></div>
+<div class="blob blob2"></div>
+<div class="blob blob3"></div>
+<div class="blob blob4"></div>
+
+<div class="topbar">
+  <div class="brand"><img src="logo.svg" class="logo-mark" alt="KineSys"> Kine<span class="accent">Sys</span><span class="brand-sep">/</span>InaIntelligence</div>
+  <div class="who">
+    <span id="whoName"></span>
+    <span class="role-badge">Super admin</span>
+    <button class="logout" id="logoutBtn">Log out</button>
+  </div>
+</div>
+
+<div class="shell" id="shell">
+  <div class="side-nav">
+    <div class="side-nav-toggle">
+      <span class="label">Menu</span>
+      <button id="sideToggle">⟨⟨</button>
+    </div>
+    <div class="side-nav-item active" data-view="overview"><span class="icon">🏠</span><span class="label">Overview</span></div>
+    <div class="side-nav-item" data-view="accounts"><span class="icon">🏢</span><span class="label">Accounts</span></div>
+    <div class="side-nav-item" data-view="newAccount"><span class="icon">➕</span><span class="label">New account</span></div>
+    <div class="side-nav-item" data-view="activity"><span class="icon">📋</span><span class="label">Activity log</span></div>
+  </div>
+
+  <div class="main-col">
+
+    <div class="page-loading" id="pageLoading"><span class="spinner"></span> Loading your accounts...</div>
+
+    <div id="dashboardContent" style="display:none;">
+      <div class="view-section active" id="viewOverview">
+        <div class="metric-grid" id="metricGrid"></div>
+        <div class="panel">
+          <div class="panel-head">
+            <h3>Recent activity</h3>
+            <span class="sub">Latest across every account</span>
+          </div>
+          <div class="activity-list" id="globalActivityPreview"></div>
+        </div>
+      </div>
+
+      <div class="view-section" id="viewAccounts">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>InaIntelligence accounts</h3>
+              <span class="sub" id="accountsSub"></span>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Account</th><th>Status</th><th>Team</th><th>Credits used / limit</th><th>Actions triggered</th><th>Last active</th><th></th></tr>
+            </thead>
+            <tbody id="accountsBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="view-section" id="viewNewAccount">
+        <div class="panel">
+          <div class="panel-head"><h3>Create a new account</h3></div>
+          <div id="newAccountFormWrap" style="padding:16px 18px;"></div>
+        </div>
+      </div>
+
+      <div class="view-section" id="viewActivity">
+        <div class="panel">
+          <div class="panel-head">
+            <h3>Global activity</h3>
+            <span class="sub">Latest across every account</span>
+          </div>
+          <div class="activity-list" id="globalActivity"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="super-admin.js"></script>
+</body>
+</html>

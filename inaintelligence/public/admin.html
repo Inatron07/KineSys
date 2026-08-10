@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard | InaIntelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="grid-overlay"></div>
+<div class="blob blob1"></div>
+<div class="blob blob2"></div>
+<div class="blob blob3"></div>
+<div class="blob blob4"></div>
+
+<div class="topbar">
+  <div class="brand"><img src="logo.svg" class="logo-mark" alt="KineSys"> Kine<span class="accent">Sys</span><span class="brand-sep">/</span>InaIntelligence</div>
+  <div class="who">
+    <span id="whoName"></span>
+    <span class="role-badge" id="roleBadge">Admin</span>
+    <button class="logout" id="logoutBtn">Log out</button>
+  </div>
+</div>
+
+<div class="shell" id="shell">
+  <div class="side-nav">
+    <div class="side-nav-toggle">
+      <span class="label">Menu</span>
+      <button id="sideToggle">⟨⟨</button>
+    </div>
+    <div class="side-nav-item active" data-view="home"><span class="icon">🏠</span><span class="label">Home</span></div>
+    <div class="side-nav-item" data-view="team"><span class="icon">👥</span><span class="label">Team</span></div>
+  </div>
+
+  <div class="main-col">
+    <div class="page-loading" id="pageLoading"><span class="spinner"></span> Loading your dashboard...</div>
+
+    <div id="dashboardContent" style="display:none;">
+      <div class="banner" id="impersonateBanner" style="display:none;"></div>
+
+      <div class="view-section active" id="viewHome">
+        <div id="licenseBar" style="font-size:11.5px;color:var(--faint);margin-bottom:18px;"></div>
+
+        <div class="panel" id="myTasksPanel" style="display:none;">
+          <div class="panel-head">
+            <h3>My tasks</h3>
+            <span class="sub" id="myTasksSub"></span>
+          </div>
+          <div id="myTasksList"></div>
+        </div>
+
+        <div class="metric-grid" id="pipelineGrid"></div>
+
+        <div class="actions-row" id="actionsRow"></div>
+
+        <div class="two-col">
+          <div>
+            <div class="panel" id="leadsPanel">
+              <div class="panel-head" style="flex-wrap:wrap;gap:10px;">
+                <div>
+                  <h3 id="leadsTitle">Leads</h3>
+                  <span class="sub" id="leadsSub"></span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <div class="view-toggle" id="leadsViewToggle">
+                    <button class="view-toggle-btn active" type="button" data-leads-view="kanban">Kanban</button>
+                    <button class="view-toggle-btn" type="button" data-leads-view="list">List</button>
+                  </div>
+                  <button class="btn btn-secondary" id="addLeadBtn" type="button" style="padding:8px 14px;font-size:11.5px;">+ Add lead</button>
+                </div>
+              </div>
+              <div class="kanban-board" id="leadsKanban"></div>
+              <table id="leadsTable" style="display:none;">
+                <thead>
+                  <tr><th>Name</th><th>Company</th><th>Status</th><th>Value</th><th>Source</th><th>Last contacted</th><th></th></tr>
+                </thead>
+                <tbody id="leadsBody"></tbody>
+              </table>
+            </div>
+
+            <div class="panel" id="activityPanel">
+              <div class="panel-head">
+                <h3>Activity</h3>
+                <span class="sub">What the team has been doing</span>
+              </div>
+              <div class="activity-list" id="activityList"></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="panel ina-panel">
+              <div class="panel-head">
+                <h3><span class="ina-dot"></span> Ina agent</h3>
+                <span class="sub">Live automation log</span>
+              </div>
+              <div class="ina-feed" id="inaFeed"></div>
+            </div>
+
+            <div class="metric-grid" style="grid-template-columns:1fr;">
+              <div class="metric-card">
+                <div class="label">Credits used / limit</div>
+                <div class="value" id="creditsValue"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="view-section" id="viewTeam">
+        <div class="panel" style="max-width:720px;">
+          <div class="panel-head">
+            <div>
+              <h3>Team</h3>
+              <span class="sub" id="teamSub"></span>
+            </div>
+            <button class="btn btn-secondary" id="newUserBtn" type="button" style="padding:8px 16px;font-size:11.5px;">+ New user</button>
+          </div>
+          <table>
+            <thead><tr><th>Name</th><th>Username</th><th></th></tr></thead>
+            <tbody id="teamList"></tbody>
+          </table>
+          <div id="teamCapNote"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="addLeadModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Add lead</h3>
+      <button class="modal-close" id="addLeadClose" type="button">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="na-field" style="margin-bottom:14px;"><label for="leadName">Name</label><input type="text" id="leadName" placeholder="e.g. Ravi Malhotra"></div>
+      <div class="na-field" style="margin-bottom:14px;"><label for="leadCompany">Company</label><input type="text" id="leadCompany" placeholder="e.g. Orbit Freight"></div>
+      <div class="na-row" style="grid-template-columns:1fr 1fr;margin-bottom:0;">
+        <div class="na-field"><label for="leadStatus">Stage</label><select id="leadStatus"></select></div>
+        <div class="na-field"><label for="leadValue">Deal value ($)</label><input type="number" id="leadValue" placeholder="0" min="0"></div>
+      </div>
+      <div class="na-field" style="margin:14px 0 18px;"><label for="leadSource">Source</label><input type="text" id="leadSource" placeholder="e.g. Referral, LinkedIn, Website"></div>
+      <button class="btn btn-primary" id="leadSubmit" type="button" style="width:100%;padding:12px;font-size:13px;">Add lead</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="taskModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="taskModalTitle">Assign task</h3>
+      <button class="modal-close" id="taskModalClose" type="button">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="na-field" style="margin-bottom:14px;"><label>Teammate</label><div id="taskAssigneeName" style="font-size:13px;font-weight:700;padding:9px 0;"></div></div>
+      <div class="na-field" style="margin-bottom:14px;"><label for="taskKind">Type</label>
+        <select id="taskKind">
+          <option value="task">Task</option>
+          <option value="reminder">Reminder / check-in</option>
+        </select>
+      </div>
+      <div class="na-field" style="margin-bottom:14px;"><label for="taskTitle">What should they do?</label><input type="text" id="taskTitle" placeholder="e.g. Follow up with Orbit Freight"></div>
+      <div class="na-field" style="margin-bottom:18px;"><label for="taskDue">Due date (optional)</label><input type="date" id="taskDue"></div>
+      <button class="btn btn-primary" id="taskSubmit" type="button" style="width:100%;padding:12px;font-size:13px;">Send</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="addUserModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>New user</h3>
+      <button class="modal-close" id="addUserModalClose" type="button">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="na-field" style="margin-bottom:14px;"><label for="newName">Full name</label><input type="text" id="newName" placeholder="e.g. Raunak Sharma"></div>
+      <div class="na-field" style="margin-bottom:14px;"><label for="newUsername">Username (email)</label><input type="text" id="newUsername" placeholder="raunak@kinesys.net"></div>
+      <div class="na-field" style="margin-bottom:18px;"><label for="newPassword">Temporary password</label><input type="password" id="newPassword" placeholder="At least 6 characters"></div>
+      <button class="btn btn-primary" id="addUserBtn" type="button" style="width:100%;padding:12px;font-size:13px;">+ Add user</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="leadDetailModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <h3>Lead details</h3>
+      <button class="modal-close" id="ldClose" type="button">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="na-field" style="margin-bottom:14px;"><label for="ldName">Name</label><input type="text" id="ldName"></div>
+      <div class="na-field" style="margin-bottom:14px;"><label for="ldCompany">Company</label><input type="text" id="ldCompany"></div>
+      <div class="na-row" style="grid-template-columns:1fr 1fr;margin-bottom:0;">
+        <div class="na-field"><label for="ldStatus">Stage</label><select id="ldStatus"></select></div>
+        <div class="na-field"><label for="ldValue">Deal value ($)</label><input type="number" id="ldValue" min="0"></div>
+      </div>
+      <div class="na-row" style="grid-template-columns:1fr 1fr;margin:14px 0 18px;">
+        <div class="na-field"><label for="ldSource">Source</label><input type="text" id="ldSource"></div>
+        <div class="na-field"><label for="ldLastContacted">Last contacted</label><input type="text" id="ldLastContacted" placeholder="e.g. Today"></div>
+      </div>
+      <button class="btn btn-primary" id="ldSave" type="button" style="width:100%;padding:12px;font-size:13px;margin-bottom:22px;">Save changes</button>
+
+      <div class="ud-label">Activity on this lead</div>
+      <div id="ldActivity" style="max-height:220px;overflow-y:auto;"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="userDetailModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <h3 id="udName">User</h3>
+      <button class="modal-close" id="udClose" type="button">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="ud-label">Username</div>
+      <div id="udUsername" style="font-size:13px;font-weight:600;margin-bottom:18px;"></div>
+
+      <div class="ud-label">Role</div>
+      <div id="udRole" style="font-size:13px;font-weight:600;margin-bottom:20px;"></div>
+
+      <div class="ud-label">Reset password</div>
+      <div style="display:flex;gap:8px;margin-bottom:20px;">
+        <input type="password" id="udNewPassword" placeholder="New temporary password">
+        <button class="btn btn-secondary" id="udResetBtn" type="button" style="padding:0 16px;flex-shrink:0;">Reset</button>
+      </div>
+
+      <div class="ud-label">Stats</div>
+      <div class="metric-grid" id="udStats" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px;"></div>
+
+      <div class="ud-label" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>Tasks</span>
+        <span style="display:flex;gap:6px;">
+          <button class="team-task-btn" id="udAssignTask" type="button">+ Task</button>
+          <button class="team-task-btn" id="udAssignRemind" type="button">🔔 Remind</button>
+        </span>
+      </div>
+      <div id="udTasks" style="margin-top:10px;"></div>
+    </div>
+  </div>
+</div>
+
+<script src="admin.js"></script>
+</body>
+</html>
