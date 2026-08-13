@@ -299,7 +299,7 @@
     return AVATAR_COLORS[sum % AVATAR_COLORS.length];
   }
   function roleSlug(role) {
-    return (role || 'sales-rep').toLowerCase().replace(/\s+/g, '-');
+    return (role || 'user').toLowerCase().replace(/\s+/g, '-');
   }
 
   var addUserModal = document.getElementById('addUserModal');
@@ -438,70 +438,456 @@
     }).join('') || '<div class="empty-note">Ina hasn\'t run anything yet — try an automation.</div>';
   }
 
-  function render(data) {
-    currentData = data;
-    document.getElementById('pageLoading').style.display = 'none';
-    document.getElementById('dashboardContent').style.display = '';
+  // ---- Real Estate CRM module ----
+  var initialViewSet = false;
+
+  function reMoney(n) {
+    if (n === null || n === undefined || n === '') return '—';
+    var num = Number(n);
+    if (!num) return '₹0';
+    if (num >= 10000000) return '₹' + (num / 10000000).toFixed(2) + 'Cr';
+    if (num >= 100000) return '₹' + (num / 100000).toFixed(1) + 'L';
+    return '₹' + num.toLocaleString('en-IN');
+  }
+
+  function reStatusClass(status) {
+    return 'status-' + String(status || '').replace(/\s+/g, '');
+  }
+
+  function renderRealEstate(data) {
+    var viewerIsPrimary = !!data.viewerIsPrimary;
 
     var expired = data.expiresAt && data.expiresAt < Date.now();
-    document.getElementById('licenseBar').innerHTML =
+    document.getElementById('reLicenseBar').innerHTML =
       '<b style="color:var(--text);">' + (data.typeLabel || 'Platform') + '</b>' +
       ' &nbsp;·&nbsp; License <span style="font-family:\'JetBrains Mono\',monospace;color:var(--cyan);">' + (data.licenseNumber || '—') + '</span>' +
       ' &nbsp;·&nbsp; Started ' + fmtDate(data.startsAt) +
       ' &nbsp;·&nbsp; <span style="color:' + (expired ? 'var(--warn)' : 'var(--faint)') + ';">' + (expired ? 'Expired ' : 'Expires ') + fmtDate(data.expiresAt) + '</span>' +
       (data.licenseTermMonths ? ' (' + data.licenseTermMonths + '-month term)' : '');
 
-    var leadsPanel = document.getElementById('leadsPanel');
+    var dash = data.dashboard || {};
+    document.getElementById('reDashCards').innerHTML =
+      metricCard('New leads today', dash.newLeadsToday || 0) +
+      metricCard('Unassigned', dash.unassigned || 0, dash.unassigned > 0 ? 'warn' : '') +
+      metricCard('Site visits', dash.siteVisits || 0) +
+      metricCard('Active brokers', dash.activeBrokers || 0) +
+      metricCard('Credits used / limit', (data.creditsUsed || 0).toLocaleString() + ' / ' + (data.creditLimit || 0).toLocaleString());
 
-    if (data.moduleKind === 'counters') {
-      leadsPanel.style.display = 'none';
+    document.getElementById('reActionsRow').innerHTML = data.actionsAvailable.map(function (a, i) {
+      return '<button class="action-btn' + (i === 0 ? ' primary' : '') + '" data-re-action="' + a.key + '"' + (data.status === 'suspended' ? ' disabled' : '') + '>' + a.icon + ' ' + a.label + '</button>';
+    }).join('');
 
-      var metricGrid = document.getElementById('pipelineGrid');
-      metricGrid.innerHTML = data.metrics.map(function (m) {
-        return metricCard(m.label, (data.counters[m.key] || 0).toLocaleString());
-      }).join('');
+    if (viewerIsPrimary) {
+      document.getElementById('reActivityList').innerHTML = data.activity.map(function (item) {
+        return '<div class="activity-item">' + item.text + '<div class="when">' + timeAgo(item.at) + (item.actor ? ' · ' + item.actor : '') + '</div></div>';
+      }).join('') || '<div class="empty-note">No activity yet.</div>';
     } else {
-      leadsPanel.style.display = '';
-      document.getElementById('leadsTitle').textContent = data.pipelineLabel;
-      var totalValue = data.pipelineValue ? Object.keys(data.pipelineValue).reduce(function (sum, k) { return sum + data.pipelineValue[k]; }, 0) : 0;
-      document.getElementById('leadsSub').textContent = data.leads.length + ' total' + (totalValue ? ' · $' + totalValue.toLocaleString() + ' pipeline value' : '');
-
-      document.getElementById('pipelineGrid').innerHTML = data.statuses.map(function (s) {
-        return metricCard(s, data.pipeline[s] || 0, STATUS_CLASS[s]);
-      }).join('');
-
-      renderKanban(data);
-      renderLeadsList(data);
-      setLeadsView(leadsViewMode);
+      document.getElementById('reActivityList').innerHTML = '<div class="empty-note">Activity is visible to the primary admin.</div>';
     }
 
-    renderInaFeed(data);
-    renderMyTasks(data);
+    var inaItems = data.activity.filter(function (item) { return /^Ina /.test(item.text); });
+    document.getElementById('reInaFeed').innerHTML = inaItems.map(function (item) {
+      return '<div class="ina-bubble">' + item.text + '<div class="when">' + timeAgo(item.at) + (item.actor ? ' · run by ' + item.actor : '') + '</div></div>';
+    }).join('') || '<div class="empty-note">Ina hasn\'t run anything yet — try an automation.</div>';
 
-    document.getElementById('actionsRow').innerHTML = data.actionsAvailable.map(function (a, i) {
-      return '<button class="action-btn' + (i === 0 ? ' primary' : '') + '" data-action="' + a.key + '"' + (data.status === 'suspended' ? ' disabled' : '') + '>' + a.icon + ' ' + a.label + '</button>';
+    document.getElementById('reLeadsSub').textContent = data.leads.length + ' total';
+    document.getElementById('reLeadsBody').innerHTML = data.leads.map(function (l) {
+      return '<tr><td>' + l.name + '</td><td>' + (l.propertyInterest || '—') + '</td>' +
+        '<td>' + (l.broker || '<span style="color:var(--warn);">Unassigned</span>') + '</td>' +
+        '<td><span class="status-pill ' + reStatusClass(l.status) + '">' + l.status + '</span></td>' +
+        '<td>' + (l.nextFollowup || '—') + '</td>' +
+        '<td style="text-align:right;"><button class="link-btn" data-re-edit-lead="' + l.id + '">Edit</button></td></tr>';
+    }).join('') || '<tr><td colspan="6" class="empty-note">No leads yet.</td></tr>';
+    document.querySelectorAll('[data-re-edit-lead]').forEach(function (btn) {
+      btn.addEventListener('click', function () { openReLeadModal(btn.getAttribute('data-re-edit-lead')); });
+    });
+
+    document.getElementById('reBrokersSub').textContent = data.brokers.length + (data.brokers.length === 1 ? ' broker' : ' brokers');
+    document.getElementById('reBrokersList').innerHTML = data.brokers.map(function (b) {
+      var pct = Math.round((b.achievedPct || 0) * 100);
+      var fillClass = pct === 0 ? 'zero' : pct < 50 ? 'low' : '';
+      return '<div class="re-broker-card">' +
+        '<div class="row"><span class="name">' + b.name + '</span>' +
+        '<span class="meta">' + (b.zone || '') + ' · <span class="status-pill ' + reStatusClass(b.status) + '">' + b.status + '</span> · <button class="link-btn" data-re-edit-broker="' + b.id + '">Edit</button></span></div>' +
+        '<p class="target">Active leads: ' + (b.activeLeads || 0) + ' · Closed deals: ' + (b.closedDeals || 0) + ' · Target ' + reMoney(b.salesTarget) + ' · Achieved ' + reMoney(b.revenueAchieved) + '</p>' +
+        '<div class="re-progress-track"><div class="re-progress-fill ' + fillClass + '" style="width:' + Math.min(pct, 100) + '%;"></div></div>' +
+        '<p class="re-progress-pct">' + pct + '% of target</p>' +
+        '</div>';
+    }).join('') || '<div class="empty-note">No brokers yet.</div>';
+    document.querySelectorAll('[data-re-edit-broker]').forEach(function (btn) {
+      btn.addEventListener('click', function () { openReBrokerModal(btn.getAttribute('data-re-edit-broker')); });
+    });
+
+    document.getElementById('reInventorySub').textContent = data.inventory.length + (data.inventory.length === 1 ? ' unit' : ' units');
+    document.getElementById('reInventoryBody').innerHTML = data.inventory.map(function (i) {
+      return '<tr><td>' + i.projectName + (i.unitNo ? ' ' + i.unitNo : '') + '</td><td>' + (i.type || '—') + '</td>' +
+        '<td>' + (i.areaSqft ? Number(i.areaSqft).toLocaleString() + ' sqft' : '—') + '</td>' +
+        '<td>' + reMoney(i.price) + '</td>' +
+        '<td><span class="status-pill ' + reStatusClass(i.status) + '">' + i.status + '</span></td>' +
+        '<td>' + (i.location || '—') + '</td>' +
+        '<td style="text-align:right;"><button class="link-btn" data-re-edit-inv="' + i.id + '">Edit</button></td></tr>';
+    }).join('') || '<tr><td colspan="7" class="empty-note">No inventory yet.</td></tr>';
+    document.querySelectorAll('[data-re-edit-inv]').forEach(function (btn) {
+      btn.addEventListener('click', function () { openReInventoryModal(btn.getAttribute('data-re-edit-inv')); });
+    });
+
+    document.getElementById('reAccountingSub').textContent = data.accounting.length + (data.accounting.length === 1 ? ' transaction' : ' transactions');
+    document.getElementById('reAccountingBody').innerHTML = data.accounting.map(function (t) {
+      return '<tr><td>' + (t.clientName || '—') + '</td><td>' + (t.property || '—') + '</td><td>' + (t.type || '—') + '</td>' +
+        '<td>' + reMoney(t.amount) + '</td><td>' + (t.brokerName || '—') + '</td><td>' + (t.paymentMode || '—') + '</td>' +
+        '<td><span class="status-pill ' + reStatusClass(t.status) + '">' + t.status + '</span></td>' +
+        '<td style="text-align:right;"><button class="link-btn" data-re-edit-txn="' + t.id + '">Edit</button></td></tr>';
+    }).join('') || '<tr><td colspan="8" class="empty-note">No transactions yet.</td></tr>';
+    document.querySelectorAll('[data-re-edit-txn]').forEach(function (btn) {
+      btn.addEventListener('click', function () { openReAccountingModal(btn.getAttribute('data-re-edit-txn')); });
+    });
+
+    document.querySelectorAll('[data-re-action]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var key = btn.getAttribute('data-re-action');
+        var originalHtml = btn.innerHTML;
+        document.querySelectorAll('[data-re-action]').forEach(function (b) { b.disabled = true; });
+        btn.innerHTML = '<span class="spinner"></span> Running...';
+        fetch('/api/accounts/' + accountId + '/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: key })
+        }).then(function (res) { return res.json().then(function (d) { return { ok: res.ok, d: d }; }); })
+          .then(function (r) {
+            if (!r.ok) {
+              document.querySelectorAll('[data-re-action]').forEach(function (b) { b.disabled = false; });
+              btn.innerHTML = originalHtml;
+              showToast(r.d.error);
+              return;
+            }
+            showToast(r.d.summary + ' (' + r.d.creditsSpent + ' credits)');
+            loadAccount();
+          });
+      });
+    });
+  }
+
+  // ---- Real Estate CRM: add/edit modals ----
+  var RE_LEAD_STATUSES = ['New', 'Contacted', 'Site Visit', 'Negotiation', 'Closed', 'Lost'];
+  var RE_INVENTORY_STATUSES = ['Available', 'Reserved', 'Negotiation', 'Sold'];
+  var RE_ACCOUNTING_STATUSES = ['Pending', 'Received'];
+  var RE_BROKER_STATUSES = ['Active', 'Inactive'];
+
+  function fillSelect(selectEl, options, selected) {
+    selectEl.innerHTML = options.map(function (o) {
+      return '<option value="' + o + '"' + (o === selected ? ' selected' : '') + '>' + o + '</option>';
     }).join('');
+  }
+
+  // -- lead modal --
+  var reLeadModal = document.getElementById('reLeadModal');
+  var editingReLeadId = null;
+
+  function openReLeadModal(leadId) {
+    if (!currentData) return;
+    editingReLeadId = leadId || null;
+    var l = leadId ? currentData.leads.filter(function (x) { return x.id === leadId; })[0] : null;
+    document.getElementById('reLeadModalTitle').textContent = l ? 'Edit lead' : 'Add lead';
+    document.getElementById('reLeadName').value = l ? l.name : '';
+    document.getElementById('reLeadPhone').value = l ? (l.phone || '') : '';
+    document.getElementById('reLeadEmail').value = l ? (l.email || '') : '';
+    document.getElementById('reLeadProperty').value = l ? (l.propertyInterest || '') : '';
+    document.getElementById('reLeadSource').value = l ? (l.source || '') : '';
+    document.getElementById('reLeadBudget').value = l ? (l.budget || 0) : '';
+    fillSelect(document.getElementById('reLeadStatus'), RE_LEAD_STATUSES, l ? l.status : 'New');
+    var brokerOptions = '<option value="">Unassigned</option>' + (currentData.brokers || []).map(function (b) {
+      return '<option value="' + b.id + '"' + (l && l.brokerId === b.id ? ' selected' : '') + '>' + b.name + '</option>';
+    }).join('');
+    document.getElementById('reLeadBroker').innerHTML = brokerOptions;
+    document.getElementById('reLeadFollowup').value = l ? (l.nextFollowup || '') : '';
+    document.getElementById('reLeadRemarks').value = l ? (l.remarks || '') : '';
+    reLeadModal.classList.add('show');
+  }
+
+  document.getElementById('reAddLeadBtn').addEventListener('click', function () { openReLeadModal(null); });
+  document.getElementById('reLeadClose').addEventListener('click', function () { reLeadModal.classList.remove('show'); });
+  reLeadModal.addEventListener('click', function (e) { if (e.target === reLeadModal) reLeadModal.classList.remove('show'); });
+  document.getElementById('reLeadSave').addEventListener('click', function () {
+    var name = document.getElementById('reLeadName').value.trim();
+    if (!name) { showToast('Name is required.'); return; }
+    var payload = {
+      name: name,
+      phone: document.getElementById('reLeadPhone').value.trim(),
+      email: document.getElementById('reLeadEmail').value.trim(),
+      propertyInterest: document.getElementById('reLeadProperty').value.trim(),
+      source: document.getElementById('reLeadSource').value.trim() || 'Manual entry',
+      budget: Number(document.getElementById('reLeadBudget').value) || 0,
+      status: document.getElementById('reLeadStatus').value,
+      brokerId: document.getElementById('reLeadBroker').value || null,
+      nextFollowup: document.getElementById('reLeadFollowup').value || null,
+      remarks: document.getElementById('reLeadRemarks').value.trim()
+    };
+    var btn = document.getElementById('reLeadSave');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Saving...';
+    var url = '/api/accounts/' + accountId + '/re/leads' + (editingReLeadId ? '/' + editingReLeadId : '');
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function (res) { return res.json().then(function (d) { return { ok: res.ok, d: d }; }); })
+      .then(function (r) {
+        btn.disabled = false;
+        btn.innerHTML = 'Save lead';
+        if (!r.ok) { showToast(r.d.error); return; }
+        reLeadModal.classList.remove('show');
+        showToast(editingReLeadId ? 'Lead updated.' : 'Lead added.');
+        loadAccount();
+      });
+  });
+
+  // -- broker modal --
+  var reBrokerModal = document.getElementById('reBrokerModal');
+  var editingReBrokerId = null;
+
+  function openReBrokerModal(brokerId) {
+    if (!currentData) return;
+    editingReBrokerId = brokerId || null;
+    var b = brokerId ? currentData.brokers.filter(function (x) { return x.id === brokerId; })[0] : null;
+    document.getElementById('reBrokerModalTitle').textContent = b ? 'Edit broker' : 'Add broker';
+    document.getElementById('reBrokerName').value = b ? b.name : '';
+    document.getElementById('reBrokerPhone').value = b ? (b.phone || '') : '';
+    document.getElementById('reBrokerEmail').value = b ? (b.email || '') : '';
+    document.getElementById('reBrokerZone').value = b ? (b.zone || '') : '';
+    fillSelect(document.getElementById('reBrokerStatus'), RE_BROKER_STATUSES, b ? b.status : 'Active');
+    document.getElementById('reBrokerCommission').value = b ? (b.commissionPct || '') : '';
+    document.getElementById('reBrokerActiveLeads').value = b ? (b.activeLeads || 0) : 0;
+    document.getElementById('reBrokerClosedDeals').value = b ? (b.closedDeals || 0) : 0;
+    document.getElementById('reBrokerTarget').value = b ? (b.salesTarget || 0) : 0;
+    document.getElementById('reBrokerRevenue').value = b ? (b.revenueAchieved || 0) : 0;
+    reBrokerModal.classList.add('show');
+  }
+
+  document.getElementById('reAddBrokerBtn').addEventListener('click', function () { openReBrokerModal(null); });
+  document.getElementById('reBrokerClose').addEventListener('click', function () { reBrokerModal.classList.remove('show'); });
+  reBrokerModal.addEventListener('click', function (e) { if (e.target === reBrokerModal) reBrokerModal.classList.remove('show'); });
+  document.getElementById('reBrokerSave').addEventListener('click', function () {
+    var name = document.getElementById('reBrokerName').value.trim();
+    if (!name) { showToast('Name is required.'); return; }
+    var payload = {
+      name: name,
+      phone: document.getElementById('reBrokerPhone').value.trim(),
+      email: document.getElementById('reBrokerEmail').value.trim(),
+      zone: document.getElementById('reBrokerZone').value.trim(),
+      status: document.getElementById('reBrokerStatus').value,
+      commissionPct: document.getElementById('reBrokerCommission').value.trim(),
+      activeLeads: Number(document.getElementById('reBrokerActiveLeads').value) || 0,
+      closedDeals: Number(document.getElementById('reBrokerClosedDeals').value) || 0,
+      salesTarget: Number(document.getElementById('reBrokerTarget').value) || 0,
+      revenueAchieved: Number(document.getElementById('reBrokerRevenue').value) || 0
+    };
+    var btn = document.getElementById('reBrokerSave');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Saving...';
+    var url = '/api/accounts/' + accountId + '/re/brokers' + (editingReBrokerId ? '/' + editingReBrokerId : '');
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function (res) { return res.json().then(function (d) { return { ok: res.ok, d: d }; }); })
+      .then(function (r) {
+        btn.disabled = false;
+        btn.innerHTML = 'Save broker';
+        if (!r.ok) { showToast(r.d.error); return; }
+        reBrokerModal.classList.remove('show');
+        showToast(editingReBrokerId ? 'Broker updated.' : 'Broker added.');
+        loadAccount();
+      });
+  });
+
+  // -- inventory modal --
+  var reInventoryModal = document.getElementById('reInventoryModal');
+  var editingReInventoryId = null;
+
+  function openReInventoryModal(itemId) {
+    if (!currentData) return;
+    editingReInventoryId = itemId || null;
+    var i = itemId ? currentData.inventory.filter(function (x) { return x.id === itemId; })[0] : null;
+    document.getElementById('reInventoryModalTitle').textContent = i ? 'Edit unit' : 'Add unit';
+    document.getElementById('reInvProject').value = i ? i.projectName : '';
+    document.getElementById('reInvUnit').value = i ? (i.unitNo || '') : '';
+    document.getElementById('reInvType').value = i ? (i.type || '') : '';
+    document.getElementById('reInvArea').value = i ? (i.areaSqft || '') : '';
+    document.getElementById('reInvPrice').value = i ? (i.price || 0) : '';
+    fillSelect(document.getElementById('reInvStatus'), RE_INVENTORY_STATUSES, i ? i.status : 'Available');
+    document.getElementById('reInvLocation').value = i ? (i.location || '') : '';
+    reInventoryModal.classList.add('show');
+  }
+
+  document.getElementById('reAddInventoryBtn').addEventListener('click', function () { openReInventoryModal(null); });
+  document.getElementById('reInventoryClose').addEventListener('click', function () { reInventoryModal.classList.remove('show'); });
+  reInventoryModal.addEventListener('click', function (e) { if (e.target === reInventoryModal) reInventoryModal.classList.remove('show'); });
+  document.getElementById('reInventorySave').addEventListener('click', function () {
+    var projectName = document.getElementById('reInvProject').value.trim();
+    if (!projectName) { showToast('Project name is required.'); return; }
+    var payload = {
+      projectName: projectName,
+      unitNo: document.getElementById('reInvUnit').value.trim(),
+      type: document.getElementById('reInvType').value.trim(),
+      areaSqft: Number(document.getElementById('reInvArea').value) || 0,
+      price: Number(document.getElementById('reInvPrice').value) || 0,
+      status: document.getElementById('reInvStatus').value,
+      location: document.getElementById('reInvLocation').value.trim()
+    };
+    var btn = document.getElementById('reInventorySave');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Saving...';
+    var url = '/api/accounts/' + accountId + '/re/inventory' + (editingReInventoryId ? '/' + editingReInventoryId : '');
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function (res) { return res.json().then(function (d) { return { ok: res.ok, d: d }; }); })
+      .then(function (r) {
+        btn.disabled = false;
+        btn.innerHTML = 'Save unit';
+        if (!r.ok) { showToast(r.d.error); return; }
+        reInventoryModal.classList.remove('show');
+        showToast(editingReInventoryId ? 'Unit updated.' : 'Unit added.');
+        loadAccount();
+      });
+  });
+
+  // -- accounting modal --
+  var reAccountingModal = document.getElementById('reAccountingModal');
+  var editingReAccountingId = null;
+
+  function openReAccountingModal(txnId) {
+    if (!currentData) return;
+    editingReAccountingId = txnId || null;
+    var t = txnId ? currentData.accounting.filter(function (x) { return x.id === txnId; })[0] : null;
+    document.getElementById('reAccountingModalTitle').textContent = t ? 'Edit transaction' : 'Add transaction';
+    document.getElementById('reTxnClient').value = t ? (t.clientName || '') : '';
+    document.getElementById('reTxnDate').value = t ? (t.date || '') : '';
+    document.getElementById('reTxnProperty').value = t ? (t.property || '') : '';
+    document.getElementById('reTxnAmount').value = t ? (t.amount || 0) : '';
+    document.getElementById('reTxnType').value = t ? (t.type || '') : '';
+    document.getElementById('reTxnBroker').value = t ? (t.brokerName || '') : '';
+    document.getElementById('reTxnPaymentMode').value = t ? (t.paymentMode || '') : '';
+    fillSelect(document.getElementById('reTxnStatus'), RE_ACCOUNTING_STATUSES, t ? t.status : 'Pending');
+    reAccountingModal.classList.add('show');
+  }
+
+  document.getElementById('reAddAccountingBtn').addEventListener('click', function () { openReAccountingModal(null); });
+  document.getElementById('reAccountingClose').addEventListener('click', function () { reAccountingModal.classList.remove('show'); });
+  reAccountingModal.addEventListener('click', function (e) { if (e.target === reAccountingModal) reAccountingModal.classList.remove('show'); });
+  document.getElementById('reAccountingSave').addEventListener('click', function () {
+    var clientName = document.getElementById('reTxnClient').value.trim();
+    if (!clientName) { showToast('Client name is required.'); return; }
+    var payload = {
+      clientName: clientName,
+      txnDate: document.getElementById('reTxnDate').value || null,
+      property: document.getElementById('reTxnProperty').value.trim(),
+      amount: Number(document.getElementById('reTxnAmount').value) || 0,
+      type: document.getElementById('reTxnType').value.trim(),
+      brokerName: document.getElementById('reTxnBroker').value.trim(),
+      paymentMode: document.getElementById('reTxnPaymentMode').value.trim(),
+      status: document.getElementById('reTxnStatus').value
+    };
+    var btn = document.getElementById('reAccountingSave');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Saving...';
+    var url = '/api/accounts/' + accountId + '/re/accounting' + (editingReAccountingId ? '/' + editingReAccountingId : '');
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function (res) { return res.json().then(function (d) { return { ok: res.ok, d: d }; }); })
+      .then(function (r) {
+        btn.disabled = false;
+        btn.innerHTML = 'Save transaction';
+        if (!r.ok) { showToast(r.d.error); return; }
+        reAccountingModal.classList.remove('show');
+        showToast(editingReAccountingId ? 'Transaction updated.' : 'Transaction added.');
+        loadAccount();
+      });
+  });
+
+  function render(data) {
+    currentData = data;
+    document.getElementById('pageLoading').style.display = 'none';
+    document.getElementById('dashboardContent').style.display = '';
 
     var isSuperAdminViewer = data.viewerRole === 'super_admin';
     var viewerIsPrimary = !!data.viewerIsPrimary;
+    var isRealEstate = data.moduleKind === 'real_estate';
+
+    // Which sidebar tabs apply depends on the account's module — Home/
+    // Leads-Kanban is Sales-only, Dashboard/Leads/Brokers/Inventory/
+    // Accounting is Real Estate-only. Team is shared by every module.
+    document.querySelectorAll('.side-nav-item[data-view="home"]').forEach(function (el) { el.style.display = isRealEstate ? 'none' : ''; });
+    document.querySelectorAll('.side-nav-item[data-realestate]').forEach(function (el) { el.style.display = isRealEstate ? '' : 'none'; });
+    if (isRealEstate && !initialViewSet) {
+      switchView('dashboard');
+      initialViewSet = true;
+    }
+
+    renderMyTasks(data);
+
+    if (isRealEstate) {
+      renderRealEstate(data);
+    } else {
+      var expired = data.expiresAt && data.expiresAt < Date.now();
+      document.getElementById('licenseBar').innerHTML =
+        '<b style="color:var(--text);">' + (data.typeLabel || 'Platform') + '</b>' +
+        ' &nbsp;·&nbsp; License <span style="font-family:\'JetBrains Mono\',monospace;color:var(--cyan);">' + (data.licenseNumber || '—') + '</span>' +
+        ' &nbsp;·&nbsp; Started ' + fmtDate(data.startsAt) +
+        ' &nbsp;·&nbsp; <span style="color:' + (expired ? 'var(--warn)' : 'var(--faint)') + ';">' + (expired ? 'Expired ' : 'Expires ') + fmtDate(data.expiresAt) + '</span>' +
+        (data.licenseTermMonths ? ' (' + data.licenseTermMonths + '-month term)' : '');
+
+      var leadsPanel = document.getElementById('leadsPanel');
+
+      if (data.moduleKind === 'counters') {
+        leadsPanel.style.display = 'none';
+
+        var metricGrid = document.getElementById('pipelineGrid');
+        metricGrid.innerHTML = data.metrics.map(function (m) {
+          return metricCard(m.label, (data.counters[m.key] || 0).toLocaleString());
+        }).join('');
+      } else {
+        leadsPanel.style.display = '';
+        document.getElementById('leadsTitle').textContent = data.pipelineLabel;
+        var totalValue = data.pipelineValue ? Object.keys(data.pipelineValue).reduce(function (sum, k) { return sum + data.pipelineValue[k]; }, 0) : 0;
+        document.getElementById('leadsSub').textContent = data.leads.length + ' total' + (totalValue ? ' · $' + totalValue.toLocaleString() + ' pipeline value' : '');
+
+        document.getElementById('pipelineGrid').innerHTML = data.statuses.map(function (s) {
+          return metricCard(s, data.pipeline[s] || 0, STATUS_CLASS[s]);
+        }).join('');
+
+        renderKanban(data);
+        renderLeadsList(data);
+        setLeadsView(leadsViewMode);
+      }
+
+      renderInaFeed(data);
+
+      document.getElementById('actionsRow').innerHTML = data.actionsAvailable.map(function (a, i) {
+        return '<button class="action-btn' + (i === 0 ? ' primary' : '') + '" data-action="' + a.key + '"' + (data.status === 'suspended' ? ' disabled' : '') + '>' + a.icon + ' ' + a.label + '</button>';
+      }).join('');
+
+      var activityPanel = document.getElementById('activityPanel');
+      if (viewerIsPrimary) {
+        activityPanel.style.display = '';
+        document.getElementById('activityList').innerHTML = data.activity.map(function (item) {
+          return '<div class="activity-item">' + item.text +
+            '<div class="when">' + timeAgo(item.at) + (item.actor ? ' · ' + item.actor : '') + '</div></div>';
+        }).join('') || '<div class="empty-note">No activity yet.</div>';
+      } else {
+        activityPanel.style.display = 'none';
+      }
+
+      document.getElementById('creditsValue').textContent = data.creditsUsed.toLocaleString() + ' / ' + data.creditLimit.toLocaleString();
+    }
 
     // Non-primary team members get a plain CRM: no Team tab, no Activity
     // feed (that's for the customer admin only), fewer automations.
     var teamNavItem = document.querySelector('.side-nav-item[data-view="team"]');
     if (teamNavItem) teamNavItem.style.display = viewerIsPrimary ? '' : 'none';
-
-    var activityPanel = document.getElementById('activityPanel');
-    if (viewerIsPrimary) {
-      activityPanel.style.display = '';
-      document.getElementById('activityList').innerHTML = data.activity.map(function (item) {
-        return '<div class="activity-item">' + item.text +
-          '<div class="when">' + timeAgo(item.at) + (item.actor ? ' · ' + item.actor : '') + '</div></div>';
-      }).join('') || '<div class="empty-note">No activity yet.</div>';
-    } else {
-      activityPanel.style.display = 'none';
-    }
-
-    document.getElementById('creditsValue').textContent = data.creditsUsed.toLocaleString() + ' / ' + data.creditLimit.toLocaleString();
 
     document.getElementById('teamSub').textContent = data.team.length + (isSuperAdminViewer ? ' users' : ' / 3 users');
     document.getElementById('teamList').innerHTML = data.team.map(function (m) {

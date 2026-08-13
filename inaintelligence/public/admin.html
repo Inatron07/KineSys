@@ -32,6 +32,11 @@
       <button id="sideToggle">⟨⟨</button>
     </div>
     <div class="side-nav-item active" data-view="home"><span class="icon">🏠</span><span class="label">Home</span></div>
+    <div class="side-nav-item" data-view="dashboard" data-realestate="1"><span class="icon">📊</span><span class="label">Dashboard</span></div>
+    <div class="side-nav-item" data-view="releads" data-realestate="1"><span class="icon">🧭</span><span class="label">Leads</span></div>
+    <div class="side-nav-item" data-view="brokers" data-realestate="1"><span class="icon">🧑‍💼</span><span class="label">Brokers</span></div>
+    <div class="side-nav-item" data-view="inventory" data-realestate="1"><span class="icon">🏢</span><span class="label">Inventory</span></div>
+    <div class="side-nav-item" data-view="accounting" data-realestate="1"><span class="icon">💳</span><span class="label">Accounting</span></div>
     <div class="side-nav-item" data-view="team"><span class="icon">👥</span><span class="label">Team</span></div>
   </div>
 
@@ -41,16 +46,16 @@
     <div id="dashboardContent" style="display:none;">
       <div class="banner" id="impersonateBanner" style="display:none;"></div>
 
+      <div class="panel" id="myTasksPanel" style="display:none;">
+        <div class="panel-head">
+          <h3>My tasks</h3>
+          <span class="sub" id="myTasksSub"></span>
+        </div>
+        <div id="myTasksList"></div>
+      </div>
+
       <div class="view-section active" id="viewHome">
         <div id="licenseBar" style="font-size:11.5px;color:var(--faint);margin-bottom:18px;"></div>
-
-        <div class="panel" id="myTasksPanel" style="display:none;">
-          <div class="panel-head">
-            <h3>My tasks</h3>
-            <span class="sub" id="myTasksSub"></span>
-          </div>
-          <div id="myTasksList"></div>
-        </div>
 
         <div class="metric-grid" id="pipelineGrid"></div>
 
@@ -106,6 +111,93 @@
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div class="view-section" id="viewDashboard">
+        <div id="reLicenseBar" style="font-size:11.5px;color:var(--faint);margin-bottom:18px;"></div>
+        <div class="metric-grid" id="reDashCards"></div>
+        <div class="actions-row" id="reActionsRow"></div>
+        <div class="two-col">
+          <div>
+            <div class="panel">
+              <div class="panel-head">
+                <h3>Activity</h3>
+                <span class="sub">What the team has been doing</span>
+              </div>
+              <div class="activity-list" id="reActivityList"></div>
+            </div>
+          </div>
+          <div>
+            <div class="panel ina-panel">
+              <div class="panel-head">
+                <h3><span class="ina-dot"></span> Ina agent</h3>
+                <span class="sub">Live automation log</span>
+              </div>
+              <div class="ina-feed" id="reInaFeed"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="view-section" id="viewReleads">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>Leads</h3>
+              <span class="sub" id="reLeadsSub"></span>
+            </div>
+            <button class="btn btn-secondary" id="reAddLeadBtn" type="button" style="padding:8px 14px;font-size:11.5px;">+ Add lead</button>
+          </div>
+          <table>
+            <thead><tr><th>Lead</th><th>Property</th><th>Broker</th><th>Status</th><th>Next follow-up</th><th></th></tr></thead>
+            <tbody id="reLeadsBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="view-section" id="viewBrokers">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>Brokers</h3>
+              <span class="sub" id="reBrokersSub"></span>
+            </div>
+            <button class="btn btn-secondary" id="reAddBrokerBtn" type="button" style="padding:8px 14px;font-size:11.5px;">+ Add broker</button>
+          </div>
+          <div id="reBrokersList" style="padding:14px 18px;"></div>
+        </div>
+      </div>
+
+      <div class="view-section" id="viewInventory">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>Property inventory</h3>
+              <span class="sub" id="reInventorySub"></span>
+            </div>
+            <button class="btn btn-secondary" id="reAddInventoryBtn" type="button" style="padding:8px 14px;font-size:11.5px;">+ Add unit</button>
+          </div>
+          <table>
+            <thead><tr><th>Project / unit</th><th>Type</th><th>Area</th><th>Price</th><th>Status</th><th>Location</th><th></th></tr></thead>
+            <tbody id="reInventoryBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="view-section" id="viewAccounting">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>Accounting</h3>
+              <span class="sub" id="reAccountingSub"></span>
+            </div>
+            <button class="btn btn-secondary" id="reAddAccountingBtn" type="button" style="padding:8px 14px;font-size:11.5px;">+ Add transaction</button>
+          </div>
+          <table>
+            <thead><tr><th>Client</th><th>Property</th><th>Type</th><th>Amount</th><th>Broker</th><th>Payment mode</th><th>Status</th><th></th></tr></thead>
+            <tbody id="reAccountingBody"></tbody>
+          </table>
         </div>
       </div>
 
@@ -241,6 +333,117 @@
         </span>
       </div>
       <div id="udTasks" style="margin-top:10px;"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="reLeadModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <h3 id="reLeadModalTitle">Add lead</h3>
+      <button class="modal-close" id="reLeadClose" type="button">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="na-row" style="grid-template-columns:1fr 1fr;margin-bottom:14px;">
+        <div class="na-field"><label for="reLeadName">Name</label><input type="text" id="reLeadName" placeholder="e.g. Ravi Malhotra"></div>
+        <div class="na-field"><label for="reLeadPhone">Phone</label><input type="text" id="reLeadPhone" placeholder="98200XXXXX"></div>
+      </div>
+      <div class="na-field" style="margin-bottom:14px;"><label for="reLeadEmail">Email</label><input type="text" id="reLeadEmail" placeholder="ravi@example.com"></div>
+      <div class="na-field" style="margin-bottom:14px;"><label for="reLeadProperty">Property interest</label><input type="text" id="reLeadProperty" placeholder="e.g. Skyline Heights, Andheri (2BHK)"></div>
+      <div class="na-row" style="grid-template-columns:1fr 1fr;margin-bottom:14px;">
+        <div class="na-field"><label for="reLeadSource">Source</label><input type="text" id="reLeadSource" placeholder="e.g. 99acres"></div>
+        <div class="na-field"><label for="reLeadBudget">Budget (₹)</label><input type="number" id="reLeadBudget" min="0"></div>
+      </div>
+      <div class="na-row" style="grid-template-columns:1fr 1fr;margin-bottom:14px;">
+        <div class="na-field"><label for="reLeadStatus">Status</label><select id="reLeadStatus"></select></div>
+        <div class="na-field"><label for="reLeadBroker">Broker</label><select id="reLeadBroker"></select></div>
+      </div>
+      <div class="na-field" style="margin-bottom:14px;"><label for="reLeadFollowup">Next follow-up</label><input type="date" id="reLeadFollowup"></div>
+      <div class="na-field" style="margin-bottom:18px;"><label for="reLeadRemarks">Remarks</label><input type="text" id="reLeadRemarks" placeholder="e.g. Called, no answer"></div>
+      <button class="btn btn-primary" id="reLeadSave" type="button" style="width:100%;padding:12px;font-size:13px;">Save lead</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="reBrokerModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <h3 id="reBrokerModalTitle">Add broker</h3>
+      <button class="modal-close" id="reBrokerClose" type="button">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="na-row" style="grid-template-columns:1fr 1fr;margin-bottom:14px;">
+        <div class="na-field"><label for="reBrokerName">Name</label><input type="text" id="reBrokerName" placeholder="e.g. Karan Mehta"></div>
+        <div class="na-field"><label for="reBrokerPhone">Phone</label><input type="text" id="reBrokerPhone" placeholder="98111XXXXX"></div>
+      </div>
+      <div class="na-row" style="grid-template-columns:1fr 1fr;margin-bottom:14px;">
+        <div class="na-field"><label for="reBrokerEmail">Email</label><input type="text" id="reBrokerEmail" placeholder="karan@agency.com"></div>
+        <div class="na-field"><label for="reBrokerZone">Zone</label><input type="text" id="reBrokerZone" placeholder="e.g. Andheri/Powai"></div>
+      </div>
+      <div class="na-row" style="grid-template-columns:1fr 1fr;margin-bottom:14px;">
+        <div class="na-field"><label for="reBrokerStatus">Status</label><select id="reBrokerStatus"></select></div>
+        <div class="na-field"><label for="reBrokerCommission">Commission %</label><input type="text" id="reBrokerCommission" placeholder="e.g. 2%"></div>
+      </div>
+      <div class="na-row" style="grid-template-columns:1fr 1fr;margin-bottom:14px;">
+        <div class="na-field"><label for="reBrokerActiveLeads">Active leads</label><input type="number" id="reBrokerActiveLeads" min="0"></div>
+        <div class="na-field"><label for="reBrokerClosedDeals">Closed deals</label><input type="number" id="reBrokerClosedDeals" min="0"></div>
+      </div>
+      <div class="na-row" style="grid-template-columns:1fr 1fr;margin-bottom:18px;">
+        <div class="na-field"><label for="reBrokerTarget">Sales target (₹)</label><input type="number" id="reBrokerTarget" min="0"></div>
+        <div class="na-field"><label for="reBrokerRevenue">Revenue achieved (₹)</label><input type="number" id="reBrokerRevenue" min="0"></div>
+      </div>
+      <button class="btn btn-primary" id="reBrokerSave" type="button" style="width:100%;padding:12px;font-size:13px;">Save broker</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="reInventoryModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <h3 id="reInventoryModalTitle">Add unit</h3>
+      <button class="modal-close" id="reInventoryClose" type="button">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="na-row" style="grid-template-columns:1fr 1fr;margin-bottom:14px;">
+        <div class="na-field"><label for="reInvProject">Project name</label><input type="text" id="reInvProject" placeholder="e.g. Skyline Heights"></div>
+        <div class="na-field"><label for="reInvUnit">Unit no</label><input type="text" id="reInvUnit" placeholder="e.g. A-1204"></div>
+      </div>
+      <div class="na-row" style="grid-template-columns:1fr 1fr;margin-bottom:14px;">
+        <div class="na-field"><label for="reInvType">Type</label><input type="text" id="reInvType" placeholder="e.g. 2BHK"></div>
+        <div class="na-field"><label for="reInvArea">Area (sqft)</label><input type="number" id="reInvArea" min="0"></div>
+      </div>
+      <div class="na-row" style="grid-template-columns:1fr 1fr;margin-bottom:14px;">
+        <div class="na-field"><label for="reInvPrice">Price (₹)</label><input type="number" id="reInvPrice" min="0"></div>
+        <div class="na-field"><label for="reInvStatus">Status</label><select id="reInvStatus"></select></div>
+      </div>
+      <div class="na-field" style="margin-bottom:18px;"><label for="reInvLocation">Location</label><input type="text" id="reInvLocation" placeholder="e.g. Andheri West"></div>
+      <button class="btn btn-primary" id="reInventorySave" type="button" style="width:100%;padding:12px;font-size:13px;">Save unit</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="reAccountingModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <h3 id="reAccountingModalTitle">Add transaction</h3>
+      <button class="modal-close" id="reAccountingClose" type="button">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="na-row" style="grid-template-columns:1fr 1fr;margin-bottom:14px;">
+        <div class="na-field"><label for="reTxnClient">Client name</label><input type="text" id="reTxnClient" placeholder="e.g. Divya Reddy"></div>
+        <div class="na-field"><label for="reTxnDate">Date</label><input type="date" id="reTxnDate"></div>
+      </div>
+      <div class="na-field" style="margin-bottom:14px;"><label for="reTxnProperty">Property</label><input type="text" id="reTxnProperty" placeholder="e.g. Sunrise Residency C-0302"></div>
+      <div class="na-row" style="grid-template-columns:1fr 1fr;margin-bottom:14px;">
+        <div class="na-field"><label for="reTxnAmount">Amount (₹)</label><input type="number" id="reTxnAmount" min="0"></div>
+        <div class="na-field"><label for="reTxnType">Type</label><input type="text" id="reTxnType" placeholder="e.g. Token Advance"></div>
+      </div>
+      <div class="na-row" style="grid-template-columns:1fr 1fr;margin-bottom:14px;">
+        <div class="na-field"><label for="reTxnBroker">Broker</label><input type="text" id="reTxnBroker" placeholder="e.g. Vikram Rao"></div>
+        <div class="na-field"><label for="reTxnPaymentMode">Payment mode</label><input type="text" id="reTxnPaymentMode" placeholder="e.g. UPI"></div>
+      </div>
+      <div class="na-field" style="margin-bottom:18px;"><label for="reTxnStatus">Status</label><select id="reTxnStatus"></select></div>
+      <button class="btn btn-primary" id="reAccountingSave" type="button" style="width:100%;padding:12px;font-size:13px;">Save transaction</button>
     </div>
   </div>
 </div>

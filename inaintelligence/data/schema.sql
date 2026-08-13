@@ -94,6 +94,74 @@ CREATE TABLE IF NOT EXISTS tasks (
   created_at    timestamptz NOT NULL DEFAULT now()
 );
 
+-- ---------- Real Estate CRM module ----------
+CREATE TABLE IF NOT EXISTS re_brokers (
+  id               text PRIMARY KEY,
+  account_id       text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  name             text NOT NULL,
+  phone            text,
+  email            text,
+  zone             text,
+  active_leads     integer NOT NULL DEFAULT 0,
+  closed_deals     integer NOT NULL DEFAULT 0,
+  conversion_pct   numeric NOT NULL DEFAULT 0,
+  commission_pct   text,
+  sales_target     bigint NOT NULL DEFAULT 0,
+  revenue_achieved bigint NOT NULL DEFAULT 0,
+  status           text NOT NULL DEFAULT 'Active',
+  created_at       timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS re_leads (
+  id                text PRIMARY KEY,
+  account_id        text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  name              text NOT NULL,
+  phone             text,
+  email             text,
+  source            text,
+  property_interest text,
+  budget            bigint NOT NULL DEFAULT 0,
+  status            text NOT NULL DEFAULT 'New',
+  broker_id         text REFERENCES re_brokers(id) ON DELETE SET NULL,
+  date_received     date,
+  last_followup     date,
+  next_followup     date,
+  remarks           text,
+  created_at        timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS re_inventory (
+  id           text PRIMARY KEY,
+  account_id   text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  project_name text NOT NULL,
+  unit_no      text,
+  type         text,
+  area_sqft    integer,
+  price        bigint NOT NULL DEFAULT 0,
+  status       text NOT NULL DEFAULT 'Available',
+  location     text,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS re_accounting (
+  id           text PRIMARY KEY,
+  account_id   text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  txn_date     date,
+  client_name  text,
+  property     text,
+  amount       bigint NOT NULL DEFAULT 0,
+  type         text,
+  broker_name  text,
+  payment_mode text,
+  status       text NOT NULL DEFAULT 'Pending',
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_re_leads_account ON re_leads(account_id);
+CREATE INDEX IF NOT EXISTS idx_re_brokers_account ON re_brokers(account_id);
+CREATE INDEX IF NOT EXISTS idx_re_inventory_account ON re_inventory(account_id);
+CREATE INDEX IF NOT EXISTS idx_re_accounting_account ON re_accounting(account_id);
+
 CREATE INDEX IF NOT EXISTS idx_leads_account ON leads(account_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_account ON tasks(account_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_id);

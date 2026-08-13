@@ -149,6 +149,114 @@ const MODULES = {
         }
       }
     }
+  },
+
+  real_estate: {
+    kind: 'real_estate',
+    actions: {
+      scan_inbox: {
+        label: 'Scan leads inbox',
+        icon: '📧',
+        plain: true,
+        async run(client, accountId) {
+          const names = ['Rohit Bansal', 'Anjali Kapoor', 'Sameer Joshi', 'Pooja Nambiar', 'Vivek Chandra', 'Fatima Ansari', 'Nikhil Rana'];
+          const projects = ['Skyline Heights, Andheri', 'Palm Villas, Whitefield', 'Oceanview Towers, Powai', 'Green Meadows Plot, Sohna', 'Metro Business Park, BKC', 'Sunrise Residency, Thane'];
+          const sources = ['99acres', 'MagicBricks', 'Facebook Ads', 'Referral', 'Website Form', 'Walk-in'];
+          const name = names[rand(0, names.length - 1)];
+          const project = projects[rand(0, projects.length - 1)];
+          const source = sources[rand(0, sources.length - 1)];
+          const budget = rand(40, 320) * 100000;
+
+          const { rows: brokers } = await client.query(
+            `SELECT id, name FROM re_brokers WHERE account_id=$1 AND status='Active' ORDER BY active_leads ASC LIMIT 1`,
+            [accountId]
+          );
+          const broker = brokers[0] || null;
+
+          const leadId = id('re_lead');
+          await client.query(
+            `INSERT INTO re_leads (id, account_id, name, source, property_interest, budget, status, broker_id, date_received, next_followup, remarks)
+             VALUES ($1,$2,$3,$4,$5,$6,'New',$7, CURRENT_DATE, CURRENT_DATE + 3, 'Auto-captured from portal')`,
+            [leadId, accountId, name, source, project, budget, broker ? broker.id : null]
+          );
+          if (broker) {
+            await client.query('UPDATE re_brokers SET active_leads = active_leads + 1 WHERE id=$1', [broker.id]);
+          }
+          return {
+            credits: rand(80, 220),
+            summary: broker
+              ? `Ina scanned the leads inbox and captured ${name} (${source}), auto-assigned to ${broker.name}.`
+              : `Ina scanned the leads inbox and captured ${name} (${source}) — no active broker available to assign.`
+          };
+        }
+      },
+      sync_sheet: {
+        label: 'Sync leads sheet',
+        icon: '🔄',
+        async run(client, accountId) {
+          const STAGES = ['New', 'Contacted', 'Site Visit', 'Negotiation', 'Closed'];
+          const { rows } = await client.query(
+            `SELECT id, name, status FROM re_leads WHERE account_id=$1 AND status <> 'Closed' AND status <> 'Lost' ORDER BY created_at DESC LIMIT 5`,
+            [accountId]
+          );
+          if (!rows.length) return { credits: rand(10, 30), summary: 'Ina synced the leads sheet — nothing new to move forward.' };
+          const row = rows[rand(0, rows.length - 1)];
+          const idx = STAGES.indexOf(row.status);
+          const next = idx >= 0 && idx < STAGES.length - 1 ? STAGES[idx + 1] : row.status;
+          await client.query('UPDATE re_leads SET status=$1, last_followup=CURRENT_DATE WHERE id=$2', [next, row.id]);
+          return { credits: rand(30, 90), summary: `Ina synced the leads sheet — ${row.name} moved from ${row.status} to ${next}.` };
+        }
+      },
+      match_payment: {
+        label: 'Match payment receipt',
+        icon: '🧾',
+        plain: true,
+        async run(client, accountId) {
+          const { rows } = await client.query(
+            `SELECT id, client_name, amount FROM re_accounting WHERE account_id=$1 AND status='Pending' ORDER BY created_at DESC LIMIT 1`,
+            [accountId]
+          );
+          if (rows.length) {
+            await client.query(`UPDATE re_accounting SET status='Received' WHERE id=$1`, [rows[0].id]);
+            return { credits: rand(20, 60), summary: `Ina matched a payment receipt to ${rows[0].client_name}'s transaction — marked Received.` };
+          }
+          return { credits: rand(10, 20), summary: 'Ina checked for new payment receipts — nothing pending to match right now.' };
+        }
+      },
+      rebalance_leads: {
+        label: 'Rebalance broker leads',
+        icon: '⚖️',
+        async run(client, accountId) {
+          const { rows } = await client.query(
+            `SELECT id, name, active_leads FROM re_brokers WHERE account_id=$1 AND status='Active' ORDER BY active_leads DESC`,
+            [accountId]
+          );
+          if (rows.length < 2) return { credits: rand(10, 20), summary: 'Ina checked broker load — not enough active brokers to rebalance.' };
+          const busiest = rows[0];
+          const quietest = rows[rows.length - 1];
+          if (busiest.active_leads - quietest.active_leads < 3) {
+            return { credits: rand(10, 20), summary: 'Ina checked broker load — leads are already balanced across the team.' };
+          }
+          await client.query('UPDATE re_brokers SET active_leads = active_leads - 1 WHERE id=$1', [busiest.id]);
+          await client.query('UPDATE re_brokers SET active_leads = active_leads + 1 WHERE id=$1', [quietest.id]);
+          return { credits: rand(30, 70), summary: `Ina rebalanced leads — reassigned 1 lead from ${busiest.name} to ${quietest.name}.` };
+        }
+      },
+      followup_watcher: {
+        label: 'Check follow-up SLAs',
+        icon: '⏰',
+        plain: true,
+        async run(client, accountId) {
+          const { rows } = await client.query(
+            `SELECT name FROM re_leads WHERE account_id=$1 AND status NOT IN ('Closed','Lost') AND next_followup IS NOT NULL AND next_followup < CURRENT_DATE LIMIT 5`,
+            [accountId]
+          );
+          if (!rows.length) return { credits: rand(10, 20), summary: 'Ina checked follow-up SLAs — everyone is on schedule.' };
+          const names = rows.map((r) => r.name).join(', ');
+          return { credits: rand(20, 50), summary: `Ina flagged overdue follow-ups for: ${names}.` };
+        }
+      }
+    }
   }
 };
 
@@ -318,6 +426,58 @@ async function getAccountDetail(accountId) {
     });
   }
 
+  if (module.kind === 'real_estate') {
+    const { rows: brokers } = await pool.query('SELECT * FROM re_brokers WHERE account_id=$1 ORDER BY revenue_achieved DESC', [accountId]);
+    const { rows: leads } = await pool.query(
+      `SELECT l.*, b.name AS broker_name FROM re_leads l LEFT JOIN re_brokers b ON b.id = l.broker_id
+       WHERE l.account_id=$1 ORDER BY l.created_at DESC LIMIT 200`,
+      [accountId]
+    );
+    const { rows: inventory } = await pool.query('SELECT * FROM re_inventory WHERE account_id=$1 ORDER BY created_at DESC', [accountId]);
+    const { rows: accounting } = await pool.query('SELECT * FROM re_accounting WHERE account_id=$1 ORDER BY txn_date DESC NULLS LAST, created_at DESC', [accountId]);
+    const { rows: dashRows } = await pool.query(
+      `SELECT
+         (SELECT count(*) FROM re_leads WHERE account_id=$1 AND date_received = CURRENT_DATE) AS new_leads_today,
+         (SELECT count(*) FROM re_leads WHERE account_id=$1 AND broker_id IS NULL) AS unassigned,
+         (SELECT count(*) FROM re_leads WHERE account_id=$1 AND status='Site Visit') AS site_visits,
+         (SELECT count(*) FROM re_brokers WHERE account_id=$1 AND status='Active') AS active_brokers`,
+      [accountId]
+    );
+    const d = dashRows[0] || {};
+
+    return Object.assign(base, {
+      dashboard: {
+        newLeadsToday: Number(d.new_leads_today) || 0,
+        unassigned: Number(d.unassigned) || 0,
+        siteVisits: Number(d.site_visits) || 0,
+        activeBrokers: Number(d.active_brokers) || 0
+      },
+      leads: leads.map((l) => ({
+        id: l.id, name: l.name, phone: l.phone, email: l.email, source: l.source,
+        propertyInterest: l.property_interest, budget: Number(l.budget) || 0, status: l.status,
+        brokerId: l.broker_id, broker: l.broker_name,
+        dateReceived: l.date_received, lastFollowup: l.last_followup, nextFollowup: l.next_followup,
+        remarks: l.remarks, createdAt: new Date(l.created_at).getTime()
+      })),
+      brokers: brokers.map((b) => ({
+        id: b.id, name: b.name, phone: b.phone, email: b.email, zone: b.zone,
+        activeLeads: b.active_leads, closedDeals: b.closed_deals,
+        conversionPct: Number(b.conversion_pct) || 0, commissionPct: b.commission_pct,
+        salesTarget: Number(b.sales_target) || 0, revenueAchieved: Number(b.revenue_achieved) || 0,
+        status: b.status, achievedPct: b.sales_target > 0 ? Number(b.revenue_achieved) / Number(b.sales_target) : 0
+      })),
+      inventory: inventory.map((i) => ({
+        id: i.id, projectName: i.project_name, unitNo: i.unit_no, type: i.type,
+        areaSqft: i.area_sqft, price: Number(i.price) || 0, status: i.status, location: i.location
+      })),
+      accounting: accounting.map((t) => ({
+        id: t.id, date: t.txn_date, clientName: t.client_name, property: t.property,
+        amount: Number(t.amount) || 0, type: t.type, brokerName: t.broker_name,
+        paymentMode: t.payment_mode, status: t.status
+      }))
+    });
+  }
+
   return Object.assign(base, {
     metrics: account.metrics,
     counters: account.counters
@@ -463,6 +623,150 @@ async function getLeadActivity(accountId, leadId) {
   return rows.map((r) => ({ id: r.id, text: r.text, actor: r.actor_name, at: new Date(r.at).getTime() }));
 }
 
+// ---------- Real Estate CRM: manual leads/brokers/inventory/accounting ----------
+const RE_LEAD_STATUSES = ['New', 'Contacted', 'Site Visit', 'Negotiation', 'Closed', 'Lost'];
+const RE_INVENTORY_STATUSES = ['Available', 'Reserved', 'Negotiation', 'Sold'];
+const RE_ACCOUNTING_STATUSES = ['Pending', 'Received'];
+const RE_BROKER_STATUSES = ['Active', 'Inactive'];
+
+async function addRELead(accountId, { name, phone, email, source, propertyInterest, budget, status, brokerId, nextFollowup, remarks }, actorName) {
+  if (!name) return { error: 'Lead name is required.' };
+  const leadStatus = RE_LEAD_STATUSES.includes(status) ? status : 'New';
+  const leadId = id('re_lead');
+  await pool.query(
+    `INSERT INTO re_leads (id, account_id, name, phone, email, source, property_interest, budget, status, broker_id, date_received, next_followup, remarks)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, CURRENT_DATE, $11, $12)`,
+    [leadId, accountId, name, phone || null, email || null, source || 'Manual entry', propertyInterest || null, Number(budget) || 0, leadStatus, brokerId || null, nextFollowup || null, remarks || null]
+  );
+  await pool.query(
+    'INSERT INTO activity (id, account_id, text, actor_name) VALUES ($1,$2,$3,$4)',
+    [id('act'), accountId, `${actorName || 'Someone'} added a new lead: ${name}.`, actorName || null]
+  );
+  return { ok: true, id: leadId };
+}
+
+async function updateRELead(accountId, leadId, { name, phone, email, source, propertyInterest, budget, status, brokerId, nextFollowup, remarks }, actorName) {
+  const { rows } = await pool.query('SELECT * FROM re_leads WHERE id=$1 AND account_id=$2', [leadId, accountId]);
+  if (!rows[0]) return { error: 'Lead not found.' };
+  if (!name) return { error: 'Lead name is required.' };
+  const leadStatus = RE_LEAD_STATUSES.includes(status) ? status : rows[0].status;
+
+  await pool.query(
+    `UPDATE re_leads SET name=$1, phone=$2, email=$3, source=$4, property_interest=$5, budget=$6, status=$7, broker_id=$8, next_followup=$9, remarks=$10
+     WHERE id=$11`,
+    [name, phone || null, email || null, source || null, propertyInterest || null, Number(budget) || 0, leadStatus, brokerId || null, nextFollowup || null, remarks || null, leadId]
+  );
+  const note = rows[0].status !== leadStatus ? ` — stage ${rows[0].status} → ${leadStatus}` : '';
+  await pool.query(
+    'INSERT INTO activity (id, account_id, text, actor_name) VALUES ($1,$2,$3,$4)',
+    [id('act'), accountId, `${actorName || 'Someone'} updated lead ${name}${note}.`, actorName || null]
+  );
+  return { ok: true };
+}
+
+async function addREBroker(accountId, { name, phone, email, zone, status, salesTarget, revenueAchieved, activeLeads, closedDeals, commissionPct }, actorName) {
+  if (!name) return { error: 'Broker name is required.' };
+  const brokerStatus = RE_BROKER_STATUSES.includes(status) ? status : 'Active';
+  const brokerId = id('re_broker');
+  await pool.query(
+    `INSERT INTO re_brokers (id, account_id, name, phone, email, zone, active_leads, closed_deals, conversion_pct, commission_pct, sales_target, revenue_achieved, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,0,$9,$10,$11,$12)`,
+    [brokerId, accountId, name, phone || null, email || null, zone || null, Number(activeLeads) || 0, Number(closedDeals) || 0, commissionPct || null, Number(salesTarget) || 0, Number(revenueAchieved) || 0, brokerStatus]
+  );
+  await pool.query(
+    'INSERT INTO activity (id, account_id, text, actor_name) VALUES ($1,$2,$3,$4)',
+    [id('act'), accountId, `${actorName || 'Someone'} added a new broker: ${name}.`, actorName || null]
+  );
+  return { ok: true, id: brokerId };
+}
+
+async function updateREBroker(accountId, brokerId, { name, phone, email, zone, status, salesTarget, revenueAchieved, activeLeads, closedDeals, commissionPct }, actorName) {
+  const { rows } = await pool.query('SELECT * FROM re_brokers WHERE id=$1 AND account_id=$2', [brokerId, accountId]);
+  if (!rows[0]) return { error: 'Broker not found.' };
+  if (!name) return { error: 'Broker name is required.' };
+  const brokerStatus = RE_BROKER_STATUSES.includes(status) ? status : rows[0].status;
+
+  await pool.query(
+    `UPDATE re_brokers SET name=$1, phone=$2, email=$3, zone=$4, active_leads=$5, closed_deals=$6, commission_pct=$7, sales_target=$8, revenue_achieved=$9, status=$10
+     WHERE id=$11`,
+    [name, phone || null, email || null, zone || null, Number(activeLeads) || 0, Number(closedDeals) || 0, commissionPct || null, Number(salesTarget) || 0, Number(revenueAchieved) || 0, brokerStatus, brokerId]
+  );
+  const note = rows[0].status !== brokerStatus ? ` — status ${rows[0].status} → ${brokerStatus}` : '';
+  await pool.query(
+    'INSERT INTO activity (id, account_id, text, actor_name) VALUES ($1,$2,$3,$4)',
+    [id('act'), accountId, `${actorName || 'Someone'} updated broker ${name}${note}.`, actorName || null]
+  );
+  return { ok: true };
+}
+
+async function addREInventory(accountId, { projectName, unitNo, type, areaSqft, price, status, location }, actorName) {
+  if (!projectName) return { error: 'Project name is required.' };
+  const invStatus = RE_INVENTORY_STATUSES.includes(status) ? status : 'Available';
+  const itemId = id('re_prop');
+  await pool.query(
+    `INSERT INTO re_inventory (id, account_id, project_name, unit_no, type, area_sqft, price, status, location)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+    [itemId, accountId, projectName, unitNo || null, type || null, Number(areaSqft) || null, Number(price) || 0, invStatus, location || null]
+  );
+  await pool.query(
+    'INSERT INTO activity (id, account_id, text, actor_name) VALUES ($1,$2,$3,$4)',
+    [id('act'), accountId, `${actorName || 'Someone'} added a new inventory unit: ${projectName}${unitNo ? ' ' + unitNo : ''}.`, actorName || null]
+  );
+  return { ok: true, id: itemId };
+}
+
+async function updateREInventory(accountId, itemId, { projectName, unitNo, type, areaSqft, price, status, location }, actorName) {
+  const { rows } = await pool.query('SELECT * FROM re_inventory WHERE id=$1 AND account_id=$2', [itemId, accountId]);
+  if (!rows[0]) return { error: 'Inventory unit not found.' };
+  if (!projectName) return { error: 'Project name is required.' };
+  const invStatus = RE_INVENTORY_STATUSES.includes(status) ? status : rows[0].status;
+
+  await pool.query(
+    `UPDATE re_inventory SET project_name=$1, unit_no=$2, type=$3, area_sqft=$4, price=$5, status=$6, location=$7 WHERE id=$8`,
+    [projectName, unitNo || null, type || null, Number(areaSqft) || null, Number(price) || 0, invStatus, location || null, itemId]
+  );
+  const note = rows[0].status !== invStatus ? ` — status ${rows[0].status} → ${invStatus}` : '';
+  await pool.query(
+    'INSERT INTO activity (id, account_id, text, actor_name) VALUES ($1,$2,$3,$4)',
+    [id('act'), accountId, `${actorName || 'Someone'} updated ${projectName}${unitNo ? ' ' + unitNo : ''}${note}.`, actorName || null]
+  );
+  return { ok: true };
+}
+
+async function addREAccounting(accountId, { txnDate, clientName, property, amount, type, brokerName, paymentMode, status }, actorName) {
+  if (!clientName) return { error: 'Client name is required.' };
+  const txnStatus = RE_ACCOUNTING_STATUSES.includes(status) ? status : 'Pending';
+  const txnId = id('re_txn');
+  await pool.query(
+    `INSERT INTO re_accounting (id, account_id, txn_date, client_name, property, amount, type, broker_name, payment_mode, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [txnId, accountId, txnDate || null, clientName, property || null, Number(amount) || 0, type || null, brokerName || null, paymentMode || null, txnStatus]
+  );
+  await pool.query(
+    'INSERT INTO activity (id, account_id, text, actor_name) VALUES ($1,$2,$3,$4)',
+    [id('act'), accountId, `${actorName || 'Someone'} added a new transaction for ${clientName}.`, actorName || null]
+  );
+  return { ok: true, id: txnId };
+}
+
+async function updateREAccounting(accountId, txnId, { txnDate, clientName, property, amount, type, brokerName, paymentMode, status }, actorName) {
+  const { rows } = await pool.query('SELECT * FROM re_accounting WHERE id=$1 AND account_id=$2', [txnId, accountId]);
+  if (!rows[0]) return { error: 'Transaction not found.' };
+  if (!clientName) return { error: 'Client name is required.' };
+  const txnStatus = RE_ACCOUNTING_STATUSES.includes(status) ? status : rows[0].status;
+
+  await pool.query(
+    `UPDATE re_accounting SET txn_date=$1, client_name=$2, property=$3, amount=$4, type=$5, broker_name=$6, payment_mode=$7, status=$8 WHERE id=$9`,
+    [txnDate || null, clientName, property || null, Number(amount) || 0, type || null, brokerName || null, paymentMode || null, txnStatus, txnId]
+  );
+  const note = rows[0].status !== txnStatus ? ` — status ${rows[0].status} → ${txnStatus}` : '';
+  await pool.query(
+    'INSERT INTO activity (id, account_id, text, actor_name) VALUES ($1,$2,$3,$4)',
+    [id('act'), accountId, `${actorName || 'Someone'} updated the ${clientName} transaction${note}.`, actorName || null]
+  );
+  return { ok: true };
+}
+
 // ---------- tasks & reminders (primary admin -> teammates) ----------
 async function assignTask(accountId, { assigneeId, title, kind, dueAt }, createdByName) {
   if (!assigneeId || !title) return { error: 'Pick a teammate and a title.' };
@@ -503,6 +807,10 @@ const MODULE_PRESETS = {
     moduleKind: 'pipeline',
     pipelineLabel: 'Leads',
     statuses: ['New', 'Contacted', 'Hot', 'Cold', 'Converted']
+  },
+  real_estate: {
+    label: 'Real Estate CRM',
+    moduleKind: 'real_estate'
   }
 };
 
@@ -535,7 +843,7 @@ async function createAccount({ name, type, adminName, adminUsername, adminPasswo
     `INSERT INTO accounts (id, name, type, module_kind, pipeline_label, statuses, status, credit_limit, credits_used, actions_triggered,
        license_number, license_term_months, starts_at, expires_at)
      VALUES ($1,$2,$3,$4,$5,$6,'active',$7,0,0,$8,$9, now(), now() + make_interval(months => $9))`,
-    [accountId, name, type, preset.moduleKind, preset.pipelineLabel, preset.statuses, Number(creditLimit) || 5000, licenseNumber, term]
+    [accountId, name, type, preset.moduleKind, preset.pipelineLabel || 'Leads', preset.statuses || ['New', 'Contacted', 'Hot', 'Cold', 'Converted'], Number(creditLimit) || 5000, licenseNumber, term]
   );
   await addTeamMember(accountId, { name: adminName, username: adminUsername, password: adminPassword }, { bypassCap: true });
   await pool.query('INSERT INTO activity (id, account_id, text) VALUES ($1,$2,$3)', [id('act'), accountId, `Account created by a super admin — ${adminName} set up as the first admin. License ${licenseNumber}, ${term}-month term.`]);
@@ -548,5 +856,6 @@ module.exports = {
   getSuperAdminOverview, toggleAccountStatus, setCreditLimit,
   findAccount, getAccountDetail, runAccountAction, addTeamMember, resetPassword,
   addLead, updateLeadStatus, updateLead, getLeadActivity, assignTask, completeTask,
+  addRELead, updateRELead, addREBroker, updateREBroker, addREInventory, updateREInventory, addREAccounting, updateREAccounting,
   createAccount, MODULE_PRESETS, LICENSE_TERMS
 };

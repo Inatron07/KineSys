@@ -176,6 +176,19 @@ tr:last-child td{border-bottom:none;}
 .status-active{background:rgba(45,255,176,.12);color:var(--mint);}
 .status-suspended{background:rgba(255,107,107,.12);color:var(--warn);}
 
+/* ---- Real Estate CRM statuses ---- */
+.status-SiteVisit{background:rgba(255,107,107,.12);color:var(--warn);}
+.status-Negotiation{background:rgba(124,92,255,.12);color:var(--violet);}
+.status-Closed{background:rgba(45,255,176,.12);color:var(--mint);}
+.status-Lost{background:rgba(154,164,189,.15);color:var(--muted);}
+.status-Available{background:rgba(45,255,176,.12);color:var(--mint);}
+.status-Reserved{background:rgba(255,107,107,.12);color:var(--warn);}
+.status-Sold{background:rgba(154,164,189,.15);color:var(--muted);}
+.status-Received{background:rgba(45,255,176,.12);color:var(--mint);}
+.status-Pending{background:rgba(255,107,107,.12);color:var(--warn);}
+.status-Active{background:rgba(45,255,176,.12);color:var(--mint);}
+.status-Inactive{background:rgba(154,164,189,.15);color:var(--muted);}
+
 /* ---- actions row ---- */
 .actions-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px;}
 .action-btn{
@@ -254,6 +267,18 @@ tr:last-child td{border-bottom:none;}
   padding:10px 12px;color:var(--text);font-size:12.5px;font-family:inherit;
 }
 #udNewPassword:focus{outline:none;border-color:var(--cyan);}
+
+/* ---- Real Estate CRM broker cards ---- */
+.re-broker-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 18px;margin-bottom:12px;}
+.re-broker-card .row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;flex-wrap:wrap;gap:6px;}
+.re-broker-card .name{font-weight:700;font-size:13.5px;}
+.re-broker-card .meta{font-size:11px;color:var(--faint);}
+.re-broker-card .target{font-size:11.5px;color:var(--muted);margin:4px 0 8px;}
+.re-progress-track{background:var(--surface2);border-radius:5px;height:8px;overflow:hidden;}
+.re-progress-fill{height:100%;background:var(--grad);}
+.re-progress-fill.low{background:var(--warn);}
+.re-progress-fill.zero{background:var(--faint);}
+.re-progress-pct{font-size:10.5px;color:var(--faint);text-align:right;margin-top:4px;}
 
 /* ---- avatar ---- */
 .avatar-circle{

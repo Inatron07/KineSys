@@ -2,8 +2,8 @@
 
 A standalone Node/Express app for the InaIntelligence login page, the
 super admin console, and admin-level department dashboards (Sales CRM
-for now). Data is stored in a real Postgres database (Neon), so it
-survives restarts.
+and Real Estate CRM so far). Data is stored in a real Postgres
+database (Neon), so it survives restarts.
 
 ## 1. Create your free Neon database
 
@@ -126,15 +126,56 @@ data on purpose.
   attributed to the person who triggered it (or "Super admin (name)"
   when done via impersonation), and shows up next to the activity entry.
 
-## Built for more than just Sales, when you're ready
+## Real Estate CRM module
 
-The account/module model already supports an ERP "counters" shape
+A second full module, live and selectable from "+ New account" as
+**Real Estate CRM**. It has its own tables (`re_leads`, `re_brokers`,
+`re_inventory`, `re_accounting`) and its own sidebar tabs — Dashboard,
+Leads, Brokers, Inventory, Accounting — all in the same KineSys-branded
+dark shell as Sales. Every tab supports manual entry — a "+ Add" button
+and a per-row/card "Edit" link open a modal to create or update leads,
+brokers, inventory units, and accounting transactions (including
+changing status, e.g. moving a lead from New to Site Visit or a
+transaction to Received). Ina's automations can also move things along
+on their own:
+
+- **Scan leads inbox** — captures a new lead, auto-assigned to whichever active broker has the fewest active leads
+- **Sync leads sheet** — advances a lead one stage forward (New → Contacted → Site Visit → Negotiation → Closed)
+- **Match payment receipt** — marks the oldest pending transaction as Received
+- **Rebalance broker leads** — shifts load from the busiest broker to the quietest
+- **Check follow-up SLAs** — flags leads whose next follow-up date has passed
+
+Team, tasks/reminders, and the Ina agent panel all work the same way
+they do for Sales — those are shared across every module, not
+Sales-specific.
+
+### Seed the demo Real Estate CRM account
+
+A ready-to-use account, pre-loaded with the exact dummy data from the
+delivered `Real_Estate_CRM.xlsx` (7 leads, 5 brokers, 7 inventory
+units, 5 transactions, 5 automation-log entries):
+
+```
+npm run seed:realestate
+```
+
+Safe to re-run — it skips creating the account/admin if it already
+exists, and skips reloading the dummy data if it's already there.
+
+Login: username `Inacio Fernandes`, password set in
+`data/seed-realestate.js` (same one you gave me — treat that file as
+sensitive, same as `data/seed.js`).
+
+## Built for more than just Sales and Real Estate, when you're ready
+
+The account/module model also supports a simple ERP "counters" shape
 (running totals + action buttons, like Finance or Supply Chain &
 Procurement, matching the homepage gallery) — it's defined in the
-`MODULES` registry in `data/db.js` but nothing seeds it yet, per your
-call to keep this to Sales + Super admin for now. Turning it on later
-is adding a module entry and picking it in "+ New account" — no schema
-or page changes needed.
+`MODULES` registry in `data/db.js` but nothing seeds it yet. Adding
+a fully custom module (its own tables, its own tabs) follows the same
+pattern the Real Estate CRM module used: new tables in `schema.sql`,
+a `MODULES` entry with its automations, a branch in `getAccountDetail`,
+and new view-sections in `admin.html`/`admin.js`.
 
 ## Notes / next steps
 

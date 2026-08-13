@@ -193,6 +193,67 @@ app.get('/api/accounts/:id/leads/:leadId/activity', requireAuth, asyncRoute(asyn
   res.json({ activity });
 }));
 
+// ---------- Real Estate CRM: manual leads/brokers/inventory/accounting ----------
+function actorNameFor(auth) {
+  return auth.role === 'super_admin' ? `Super admin (${auth.name})` : auth.name;
+}
+
+app.post('/api/accounts/:id/re/leads', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const result = await db.addRELead(req.params.id, req.body || {}, actorNameFor(req.session.auth));
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ ok: true, id: result.id });
+}));
+
+app.post('/api/accounts/:id/re/leads/:leadId', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const result = await db.updateRELead(req.params.id, req.params.leadId, req.body || {}, actorNameFor(req.session.auth));
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ ok: true });
+}));
+
+app.post('/api/accounts/:id/re/brokers', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const result = await db.addREBroker(req.params.id, req.body || {}, actorNameFor(req.session.auth));
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ ok: true, id: result.id });
+}));
+
+app.post('/api/accounts/:id/re/brokers/:brokerId', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const result = await db.updateREBroker(req.params.id, req.params.brokerId, req.body || {}, actorNameFor(req.session.auth));
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ ok: true });
+}));
+
+app.post('/api/accounts/:id/re/inventory', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const result = await db.addREInventory(req.params.id, req.body || {}, actorNameFor(req.session.auth));
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ ok: true, id: result.id });
+}));
+
+app.post('/api/accounts/:id/re/inventory/:itemId', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const result = await db.updateREInventory(req.params.id, req.params.itemId, req.body || {}, actorNameFor(req.session.auth));
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ ok: true });
+}));
+
+app.post('/api/accounts/:id/re/accounting', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const result = await db.addREAccounting(req.params.id, req.body || {}, actorNameFor(req.session.auth));
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ ok: true, id: result.id });
+}));
+
+app.post('/api/accounts/:id/re/accounting/:txnId', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const result = await db.updateREAccounting(req.params.id, req.params.txnId, req.body || {}, actorNameFor(req.session.auth));
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ ok: true });
+}));
+
 // ---------- team management ----------
 app.post('/api/accounts/:id/team', requireAuth, asyncRoute(async (req, res) => {
   if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
