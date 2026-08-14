@@ -118,6 +118,23 @@
         <div id="reLicenseBar" style="font-size:11.5px;color:var(--faint);margin-bottom:18px;"></div>
         <div class="metric-grid" id="reDashCards"></div>
         <div class="actions-row" id="reActionsRow"></div>
+
+        <div class="two-col-even">
+          <div class="panel" style="margin-bottom:0;">
+            <div class="panel-head"><h3>Lead pipeline</h3><span class="sub">By stage</span></div>
+            <div class="panel-body" id="reChartPipeline" style="padding:16px 18px;"></div>
+          </div>
+          <div class="panel" style="margin-bottom:0;">
+            <div class="panel-head"><h3>Lead source</h3><span class="sub">All time</span></div>
+            <div class="panel-body" id="reChartSource" style="padding:16px 18px;display:flex;flex-direction:column;align-items:center;"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h3>Lead growth</h3><span class="sub">By day added</span></div>
+          <div class="panel-body" id="reChartGrowth" style="padding:16px 18px;"></div>
+        </div>
+
         <div class="two-col">
           <div>
             <div class="panel">
@@ -215,6 +232,126 @@
             <tbody id="teamList"></tbody>
           </table>
           <div id="teamCapNote"></div>
+        </div>
+      </div>
+
+      <div class="view-section" id="viewReLeadDetail">
+        <a href="#" class="detail-back" id="rldBack">&larr; Back to leads</a>
+        <h1 style="font-size:19px;font-weight:700;margin-bottom:16px;" id="rldPageTitle"></h1>
+        <div class="detail-shell">
+          <div class="profile-card">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;">
+              <div class="profile-avatar" id="rldAvatar"></div>
+              <button class="btn-ghost" id="rldEditBtn" type="button">Edit</button>
+            </div>
+            <h2 id="rldName"></h2>
+            <div class="stage" id="rldStage"></div>
+            <div class="quick-actions">
+              <a href="#" id="rldCallLink">Call</a>
+              <a href="#" id="rldEmailLink">Email</a>
+            </div>
+            <div class="contact-line" id="rldPhoneLine"></div>
+            <div class="contact-line" id="rldEmailLine"></div>
+            <div class="stat-boxes">
+              <div class="stat-box"><div class="num" id="rldBudget"></div><div class="lbl">Budget</div></div>
+              <div class="stat-box"><div class="num" id="rldAge"></div><div class="lbl">Lead age</div></div>
+            </div>
+            <div class="props-list">
+              <h4>Lead properties</h4>
+              <div class="prop-row"><span class="k">Owner</span><span class="v" id="rldOwner"></span></div>
+              <div class="prop-row"><span class="k">Source</span><span class="v" id="rldSource"></span></div>
+              <div class="prop-row"><span class="k">Property interest</span><span class="v" id="rldInterest"></span></div>
+              <div class="prop-row"><span class="k">Next follow-up</span><span class="v" id="rldFollowup"></span></div>
+            </div>
+          </div>
+          <div class="panel" style="margin-bottom:0;">
+            <div class="panel-head"><h3>Activity</h3><span class="sub">History &amp; notes for this lead</span></div>
+            <div class="timeline" id="rldTimeline"></div>
+          </div>
+          <div>
+            <div class="panel">
+              <div class="panel-head"><h3>Add note</h3></div>
+              <div class="note-form">
+                <input type="text" id="rldNoteInput" placeholder="e.g. Asked for a site visit Saturday">
+                <button id="rldNoteSubmit" type="button">Add</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="view-section" id="viewReBrokerDetail">
+        <a href="#" class="detail-back" id="rbdBack">&larr; Back to brokers</a>
+        <h1 style="font-size:19px;font-weight:700;margin-bottom:16px;" id="rbdPageTitle"></h1>
+        <div class="detail-shell">
+          <div class="profile-card">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;">
+              <div class="profile-avatar" id="rbdAvatar"></div>
+              <button class="btn-ghost" id="rbdEditBtn" type="button">Edit</button>
+            </div>
+            <h2 id="rbdName"></h2>
+            <div class="stage" id="rbdStatus"></div>
+            <div class="contact-line" id="rbdPhoneLine"></div>
+            <div class="contact-line" id="rbdEmailLine"></div>
+            <div class="stat-boxes">
+              <div class="stat-box"><div class="num" id="rbdActiveLeads"></div><div class="lbl">Active leads</div></div>
+              <div class="stat-box"><div class="num" id="rbdClosedDeals"></div><div class="lbl">Closed deals</div></div>
+            </div>
+            <div class="props-list">
+              <h4>Performance</h4>
+              <div class="prop-row"><span class="k">Zone</span><span class="v" id="rbdZone"></span></div>
+              <div class="prop-row"><span class="k">Commission</span><span class="v" id="rbdCommission"></span></div>
+              <div class="prop-row"><span class="k">Target</span><span class="v" id="rbdTarget"></span></div>
+              <div class="prop-row"><span class="k">Achieved</span><span class="v" id="rbdAchieved"></span></div>
+            </div>
+            <div class="re-progress-track" style="margin-top:10px;"><div class="re-progress-fill" id="rbdProgressFill"></div></div>
+            <p class="re-progress-pct" id="rbdProgressPct"></p>
+          </div>
+          <div style="grid-column:2 / span 2;">
+            <div class="panel">
+              <div class="panel-head"><h3>Assigned leads</h3><span class="sub" id="rbdLeadsSub"></span></div>
+              <div id="rbdLeadsList"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><h3>Activity</h3></div>
+              <div class="timeline" id="rbdTimeline"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="view-section" id="viewReInventoryDetail">
+        <a href="#" class="detail-back" id="ridBack">&larr; Back to inventory</a>
+        <h1 style="font-size:19px;font-weight:700;margin-bottom:16px;" id="ridPageTitle"></h1>
+        <div class="detail-shell">
+          <div class="profile-card">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;">
+              <div class="profile-avatar" id="ridAvatar"></div>
+              <button class="btn-ghost" id="ridEditBtn" type="button">Edit</button>
+            </div>
+            <h2 id="ridName"></h2>
+            <div class="stage" id="ridStatus"></div>
+            <div class="stat-boxes">
+              <div class="stat-box"><div class="num" id="ridPrice"></div><div class="lbl">Price</div></div>
+              <div class="stat-box"><div class="num" id="ridArea"></div><div class="lbl">Area</div></div>
+            </div>
+            <div class="props-list">
+              <h4>Unit details</h4>
+              <div class="prop-row"><span class="k">Type</span><span class="v" id="ridType"></span></div>
+              <div class="prop-row"><span class="k">Location</span><span class="v" id="ridLocation"></span></div>
+              <div class="prop-row"><span class="k">Unit no</span><span class="v" id="ridUnitNo"></span></div>
+            </div>
+          </div>
+          <div style="grid-column:2 / span 2;">
+            <div class="panel">
+              <div class="panel-head"><h3>Interested leads</h3><span class="sub">Matched by property interest</span></div>
+              <div id="ridLeadsList"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><h3>Activity</h3></div>
+              <div class="timeline" id="ridTimeline"></div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

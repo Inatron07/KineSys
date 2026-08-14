@@ -145,6 +145,21 @@ on their own:
 - **Rebalance broker leads** — shifts load from the busiest broker to the quietest
 - **Check follow-up SLAs** — flags leads whose next follow-up date has passed
 
+The dashboard also has a light theme (`re-light`) and three chart
+panels — lead pipeline by stage, lead source donut, and a 14-day lead
+growth chart — computed client-side from the same data already on the
+page (hand-drawn inline SVG, no chart library dependency).
+
+Every lead, broker, and inventory unit now has its own detail page too
+(click the name), mirroring the LeadSquared-style contact/lead layout
+the team reviewed: a profile card with stats, and a real activity
+timeline pulled from Postgres. Leads also get a notes box that logs
+straight into that lead's timeline. Broker pages list every lead
+currently assigned to them; inventory pages list any leads whose
+"property interest" mentions that project. A static side-by-side
+mockup of this layout (not wired to the backend) lives in
+`public/re-preview/` if you want to compare.
+
 Team, tasks/reminders, and the Ina agent panel all work the same way
 they do for Sales — those are shared across every module, not
 Sales-specific.

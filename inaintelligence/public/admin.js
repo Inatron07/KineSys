@@ -497,9 +497,11 @@
       return '<div class="ina-bubble">' + item.text + '<div class="when">' + timeAgo(item.at) + (item.actor ? ' · run by ' + item.actor : '') + '</div></div>';
     }).join('') || '<div class="empty-note">Ina hasn\'t run anything yet — try an automation.</div>';
 
+    renderReCharts(data);
+
     document.getElementById('reLeadsSub').textContent = data.leads.length + ' total';
     document.getElementById('reLeadsBody').innerHTML = data.leads.map(function (l) {
-      return '<tr><td>' + l.name + '</td><td>' + (l.propertyInterest || '—') + '</td>' +
+      return '<tr><td><a href="#" class="link-btn" data-open-lead="' + l.id + '" style="color:var(--text);font-weight:600;">' + l.name + '</a></td><td>' + (l.propertyInterest || '—') + '</td>' +
         '<td>' + (l.broker || '<span style="color:var(--warn);">Unassigned</span>') + '</td>' +
         '<td><span class="status-pill ' + reStatusClass(l.status) + '">' + l.status + '</span></td>' +
         '<td>' + (l.nextFollowup || '—') + '</td>' +
@@ -508,13 +510,16 @@
     document.querySelectorAll('[data-re-edit-lead]').forEach(function (btn) {
       btn.addEventListener('click', function () { openReLeadModal(btn.getAttribute('data-re-edit-lead')); });
     });
+    document.querySelectorAll('[data-open-lead]').forEach(function (a) {
+      a.addEventListener('click', function (e) { e.preventDefault(); openReLeadDetail(a.getAttribute('data-open-lead')); });
+    });
 
     document.getElementById('reBrokersSub').textContent = data.brokers.length + (data.brokers.length === 1 ? ' broker' : ' brokers');
     document.getElementById('reBrokersList').innerHTML = data.brokers.map(function (b) {
       var pct = Math.round((b.achievedPct || 0) * 100);
       var fillClass = pct === 0 ? 'zero' : pct < 50 ? 'low' : '';
       return '<div class="re-broker-card">' +
-        '<div class="row"><span class="name">' + b.name + '</span>' +
+        '<div class="row"><span class="name"><a href="#" data-open-broker="' + b.id + '" style="color:var(--text);">' + b.name + '</a></span>' +
         '<span class="meta">' + (b.zone || '') + ' · <span class="status-pill ' + reStatusClass(b.status) + '">' + b.status + '</span> · <button class="link-btn" data-re-edit-broker="' + b.id + '">Edit</button></span></div>' +
         '<p class="target">Active leads: ' + (b.activeLeads || 0) + ' · Closed deals: ' + (b.closedDeals || 0) + ' · Target ' + reMoney(b.salesTarget) + ' · Achieved ' + reMoney(b.revenueAchieved) + '</p>' +
         '<div class="re-progress-track"><div class="re-progress-fill ' + fillClass + '" style="width:' + Math.min(pct, 100) + '%;"></div></div>' +
@@ -524,10 +529,13 @@
     document.querySelectorAll('[data-re-edit-broker]').forEach(function (btn) {
       btn.addEventListener('click', function () { openReBrokerModal(btn.getAttribute('data-re-edit-broker')); });
     });
+    document.querySelectorAll('[data-open-broker]').forEach(function (a) {
+      a.addEventListener('click', function (e) { e.preventDefault(); openReBrokerDetail(a.getAttribute('data-open-broker')); });
+    });
 
     document.getElementById('reInventorySub').textContent = data.inventory.length + (data.inventory.length === 1 ? ' unit' : ' units');
     document.getElementById('reInventoryBody').innerHTML = data.inventory.map(function (i) {
-      return '<tr><td>' + i.projectName + (i.unitNo ? ' ' + i.unitNo : '') + '</td><td>' + (i.type || '—') + '</td>' +
+      return '<tr><td><a href="#" class="link-btn" data-open-inv="' + i.id + '" style="color:var(--text);font-weight:600;">' + i.projectName + (i.unitNo ? ' ' + i.unitNo : '') + '</a></td><td>' + (i.type || '—') + '</td>' +
         '<td>' + (i.areaSqft ? Number(i.areaSqft).toLocaleString() + ' sqft' : '—') + '</td>' +
         '<td>' + reMoney(i.price) + '</td>' +
         '<td><span class="status-pill ' + reStatusClass(i.status) + '">' + i.status + '</span></td>' +
@@ -536,6 +544,9 @@
     }).join('') || '<tr><td colspan="7" class="empty-note">No inventory yet.</td></tr>';
     document.querySelectorAll('[data-re-edit-inv]').forEach(function (btn) {
       btn.addEventListener('click', function () { openReInventoryModal(btn.getAttribute('data-re-edit-inv')); });
+    });
+    document.querySelectorAll('[data-open-inv]').forEach(function (a) {
+      a.addEventListener('click', function (e) { e.preventDefault(); openReInventoryDetail(a.getAttribute('data-open-inv')); });
     });
 
     document.getElementById('reAccountingSub').textContent = data.accounting.length + (data.accounting.length === 1 ? ' transaction' : ' transactions');
@@ -815,6 +826,243 @@
       });
   });
 
+  // ---- Real Estate CRM: dashboard charts (hand-drawn inline SVG, no dependency) ----
+  var RE_STAGE_COLORS = {
+    'New': '#22d3ee', 'Contacted': '#0f6fb0', 'Site Visit': '#c98a1c',
+    'Negotiation': '#5b3fc0', 'Closed': '#0e8f5f', 'Lost': '#d64545'
+  };
+  var RE_STAGE_ORDER = ['New', 'Contacted', 'Site Visit', 'Negotiation', 'Closed', 'Lost'];
+  var RE_SOURCE_COLORS = ['#22d3ee', '#7c5cff', '#0e8f5f', '#c98a1c', '#d64545', '#0f6fb0'];
+
+  function renderReCharts(data) {
+    var leads = data.leads || [];
+
+    var counts = RE_STAGE_ORDER.map(function (s) { return leads.filter(function (l) { return l.status === s; }).length; });
+    var maxCount = Math.max.apply(null, counts.concat([1]));
+    var bars = RE_STAGE_ORDER.map(function (s, i) {
+      var h = Math.round((counts[i] / maxCount) * 100);
+      return '<div style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:130px;flex:1;">' +
+        '<div style="font-size:10px;color:var(--faint);margin-bottom:4px;">' + counts[i] + '</div>' +
+        '<div style="width:28px;height:' + Math.max(h, 3) + 'px;background:' + RE_STAGE_COLORS[s] + ';border-radius:4px 4px 0 0;"></div></div>';
+    }).join('');
+    document.getElementById('reChartPipeline').innerHTML =
+      '<div style="display:flex;align-items:flex-end;gap:6px;">' + bars + '</div>' +
+      '<div class="chart-legend">' + RE_STAGE_ORDER.map(function (s) {
+        return '<span><i style="background:' + RE_STAGE_COLORS[s] + ';"></i>' + s + '</span>';
+      }).join('') + '</div>';
+
+    var bySource = {};
+    leads.forEach(function (l) {
+      var src = l.source || 'Other';
+      bySource[src] = (bySource[src] || 0) + 1;
+    });
+    var sourceKeys = Object.keys(bySource);
+    var total = leads.length || 1;
+    var r = 50, c = 2 * Math.PI * r, offset = 0;
+    var circles = sourceKeys.map(function (k, i) {
+      var frac = bySource[k] / total;
+      var len = frac * c;
+      var html = '<circle cx="60" cy="60" r="' + r + '" fill="none" stroke="' + RE_SOURCE_COLORS[i % RE_SOURCE_COLORS.length] + '" stroke-width="16" stroke-dasharray="' + len.toFixed(1) + ' ' + c.toFixed(1) + '" stroke-dashoffset="' + (-offset).toFixed(1) + '" transform="rotate(-90 60 60)"></circle>';
+      offset += len;
+      return html;
+    }).join('');
+    document.getElementById('reChartSource').innerHTML = sourceKeys.length
+      ? '<svg viewBox="0 0 120 120" width="140" height="140"><circle cx="60" cy="60" r="' + r + '" fill="none" stroke="var(--surface2)" stroke-width="16"></circle>' + circles + '</svg>' +
+        '<div class="chart-legend">' + sourceKeys.map(function (k, i) {
+          var pct = Math.round((bySource[k] / total) * 100);
+          return '<span><i style="background:' + RE_SOURCE_COLORS[i % RE_SOURCE_COLORS.length] + ';"></i>' + k + ' ' + pct + '%</span>';
+        }).join('') + '</div>'
+      : '<div class="empty-note">No leads yet.</div>';
+
+    var days = [];
+    for (var i = 13; i >= 0; i--) {
+      var d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i);
+      days.push(d.getTime());
+    }
+    var dayCounts = days.map(function (dayStart) {
+      var dayEnd = dayStart + 86400000;
+      return leads.filter(function (l) { return l.createdAt >= dayStart && l.createdAt < dayEnd; }).length;
+    });
+    var cum = []; var running = 0;
+    dayCounts.forEach(function (n) { running += n; cum.push(running); });
+    var maxCum = Math.max.apply(null, cum.concat([1]));
+    var w = 640, h = 130, stepX = w / (cum.length - 1 || 1);
+    var points = cum.map(function (v, idx) {
+      var x = Math.round(idx * stepX);
+      var y = Math.round(h - (v / maxCum) * (h - 10) - 5);
+      return x + ',' + y;
+    }).join(' ');
+    var areaPoints = points + ' ' + w + ',' + h + ' 0,' + h;
+    document.getElementById('reChartGrowth').innerHTML =
+      '<svg viewBox="0 0 ' + w + ' ' + h + '" width="100%" height="150" preserveAspectRatio="none">' +
+      '<polyline points="' + areaPoints + '" fill="rgba(34,211,238,.12)" stroke="none"></polyline>' +
+      '<polyline points="' + points + '" fill="none" stroke="#22d3ee" stroke-width="2.5"></polyline>' +
+      '<line x1="0" y1="' + h + '" x2="' + w + '" y2="' + h + '" stroke="var(--border)" stroke-width="1"></line></svg>';
+  }
+
+  // ---- Real Estate CRM: lead / broker / inventory detail views ----
+  var activeDetail = null;
+
+  function showSection(sectionId) {
+    document.querySelectorAll('.view-section').forEach(function (s) { s.classList.remove('active'); });
+    var el = document.getElementById(sectionId);
+    if (el) el.classList.add('active');
+  }
+
+  function renderReTimeline(elId, url, emptyText) {
+    document.getElementById(elId).innerHTML = '<div class="empty-note"><span class="spinner"></span> Loading...</div>';
+    fetch(url).then(function (res) { return res.json(); }).then(function (d) {
+      var items = d.activity || [];
+      document.getElementById(elId).innerHTML = items.map(function (item) {
+        return '<div class="tl-item"><div class="tl-dot"></div><div class="tl-body">' + item.text +
+          '<div class="when">' + timeAgo(item.at) + (item.actor ? ' · ' + item.actor : '') + '</div></div></div>';
+      }).join('') || '<div class="empty-note">' + emptyText + '</div>';
+    }).catch(function () {
+      document.getElementById(elId).innerHTML = '<div class="empty-note">Couldn\'t load activity.</div>';
+    });
+  }
+
+  function bindOpenLeadLinks(containerId) {
+    document.querySelectorAll('#' + containerId + ' [data-open-lead]').forEach(function (a) {
+      a.addEventListener('click', function (e) { e.preventDefault(); openReLeadDetail(a.getAttribute('data-open-lead')); });
+    });
+  }
+
+  function openReLeadDetail(leadId) {
+    if (!currentData) return;
+    var l = currentData.leads.filter(function (x) { return x.id === leadId; })[0];
+    if (!l) return;
+    activeDetail = { type: 'lead', id: leadId };
+
+    document.getElementById('rldPageTitle').textContent = l.name;
+    document.getElementById('rldAvatar').textContent = initials(l.name);
+    document.getElementById('rldAvatar').style.background = avatarColor(l.name);
+    document.getElementById('rldName').textContent = l.name;
+    document.getElementById('rldStage').innerHTML = '<span class="status-pill ' + reStatusClass(l.status) + '">' + l.status + '</span>';
+    document.getElementById('rldCallLink').href = l.phone ? ('tel:' + l.phone) : '#';
+    document.getElementById('rldEmailLink').href = l.email ? ('mailto:' + l.email) : '#';
+    document.getElementById('rldPhoneLine').textContent = l.phone || 'No phone on file';
+    document.getElementById('rldEmailLine').textContent = l.email || 'No email on file';
+    document.getElementById('rldBudget').textContent = reMoney(l.budget);
+    var ageDays = l.createdAt ? Math.max(0, Math.floor((Date.now() - l.createdAt) / 86400000)) : 0;
+    document.getElementById('rldAge').textContent = ageDays + (ageDays === 1 ? ' day' : ' days');
+    document.getElementById('rldOwner').textContent = l.broker || 'Unassigned';
+    document.getElementById('rldSource').textContent = l.source || '—';
+    document.getElementById('rldInterest').textContent = l.propertyInterest || '—';
+    document.getElementById('rldFollowup').textContent = l.nextFollowup || '—';
+
+    showSection('viewReLeadDetail');
+    renderReTimeline('rldTimeline', '/api/accounts/' + accountId + '/re/leads/' + leadId + '/activity', 'No activity on this lead yet.');
+  }
+
+  document.getElementById('rldEditBtn').addEventListener('click', function () {
+    if (activeDetail && activeDetail.type === 'lead') openReLeadModal(activeDetail.id);
+  });
+  document.getElementById('rldBack').addEventListener('click', function (e) {
+    e.preventDefault(); activeDetail = null; switchView('releads');
+  });
+  document.getElementById('rldNoteSubmit').addEventListener('click', function () {
+    var input = document.getElementById('rldNoteInput');
+    var text = input.value.trim();
+    if (!text || !activeDetail || activeDetail.type !== 'lead') { showToast('Write a note first.'); return; }
+    var btn = document.getElementById('rldNoteSubmit');
+    btn.disabled = true;
+    fetch('/api/accounts/' + accountId + '/re/leads/' + activeDetail.id + '/note', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note: text })
+    }).then(function (res) { return res.json().then(function (d) { return { ok: res.ok, d: d }; }); })
+      .then(function (r) {
+        btn.disabled = false;
+        if (!r.ok) { showToast(r.d.error); return; }
+        input.value = '';
+        showToast('Note added.');
+        renderReTimeline('rldTimeline', '/api/accounts/' + accountId + '/re/leads/' + activeDetail.id + '/activity', 'No activity on this lead yet.');
+      });
+  });
+
+  function openReBrokerDetail(brokerId) {
+    if (!currentData) return;
+    var b = currentData.brokers.filter(function (x) { return x.id === brokerId; })[0];
+    if (!b) return;
+    activeDetail = { type: 'broker', id: brokerId };
+
+    document.getElementById('rbdPageTitle').textContent = b.name;
+    document.getElementById('rbdAvatar').textContent = initials(b.name);
+    document.getElementById('rbdAvatar').style.background = avatarColor(b.name);
+    document.getElementById('rbdName').textContent = b.name;
+    document.getElementById('rbdStatus').innerHTML = '<span class="status-pill ' + reStatusClass(b.status) + '">' + b.status + '</span>';
+    document.getElementById('rbdPhoneLine').textContent = b.phone || 'No phone on file';
+    document.getElementById('rbdEmailLine').textContent = b.email || 'No email on file';
+    document.getElementById('rbdActiveLeads').textContent = b.activeLeads || 0;
+    document.getElementById('rbdClosedDeals').textContent = b.closedDeals || 0;
+    document.getElementById('rbdZone').textContent = b.zone || '—';
+    document.getElementById('rbdCommission').textContent = b.commissionPct || '—';
+    document.getElementById('rbdTarget').textContent = reMoney(b.salesTarget);
+    document.getElementById('rbdAchieved').textContent = reMoney(b.revenueAchieved);
+    var pct = Math.round((b.achievedPct || 0) * 100);
+    var fillClass = pct === 0 ? 'zero' : pct < 50 ? 'low' : '';
+    document.getElementById('rbdProgressFill').className = 're-progress-fill' + (fillClass ? ' ' + fillClass : '');
+    document.getElementById('rbdProgressFill').style.width = Math.min(pct, 100) + '%';
+    document.getElementById('rbdProgressPct').textContent = pct + '% of target';
+
+    var assigned = currentData.leads.filter(function (l) { return l.brokerId === brokerId; });
+    document.getElementById('rbdLeadsSub').textContent = assigned.length + (assigned.length === 1 ? ' lead' : ' leads');
+    document.getElementById('rbdLeadsList').innerHTML = assigned.map(function (l) {
+      return '<div class="mini-lead-row"><div><a href="#" data-open-lead="' + l.id + '" style="font-weight:600;color:var(--text);">' + l.name + '</a>' +
+        '<div class="meta">' + (l.propertyInterest || 'No property noted') + '</div></div>' +
+        '<span class="status-pill ' + reStatusClass(l.status) + '">' + l.status + '</span></div>';
+    }).join('') || '<div class="empty-note">No leads assigned to this broker yet.</div>';
+    bindOpenLeadLinks('rbdLeadsList');
+
+    showSection('viewReBrokerDetail');
+    renderReTimeline('rbdTimeline', '/api/accounts/' + accountId + '/re/brokers/' + brokerId + '/activity', 'No activity for this broker yet.');
+  }
+
+  document.getElementById('rbdEditBtn').addEventListener('click', function () {
+    if (activeDetail && activeDetail.type === 'broker') openReBrokerModal(activeDetail.id);
+  });
+  document.getElementById('rbdBack').addEventListener('click', function (e) {
+    e.preventDefault(); activeDetail = null; switchView('brokers');
+  });
+
+  function openReInventoryDetail(itemId) {
+    if (!currentData) return;
+    var i = currentData.inventory.filter(function (x) { return x.id === itemId; })[0];
+    if (!i) return;
+    activeDetail = { type: 'inventory', id: itemId };
+
+    var fullName = i.projectName + (i.unitNo ? ' ' + i.unitNo : '');
+    document.getElementById('ridPageTitle').textContent = fullName;
+    document.getElementById('ridAvatar').textContent = initials(i.projectName);
+    document.getElementById('ridAvatar').style.background = avatarColor(i.projectName);
+    document.getElementById('ridName').textContent = fullName;
+    document.getElementById('ridStatus').innerHTML = '<span class="status-pill ' + reStatusClass(i.status) + '">' + i.status + '</span>';
+    document.getElementById('ridPrice').textContent = reMoney(i.price);
+    document.getElementById('ridArea').textContent = i.areaSqft ? Number(i.areaSqft).toLocaleString() + ' sqft' : '—';
+    document.getElementById('ridType').textContent = i.type || '—';
+    document.getElementById('ridLocation').textContent = i.location || '—';
+    document.getElementById('ridUnitNo').textContent = i.unitNo || '—';
+
+    var interested = currentData.leads.filter(function (l) {
+      return l.propertyInterest && i.projectName && l.propertyInterest.toLowerCase().indexOf(i.projectName.toLowerCase()) !== -1;
+    });
+    document.getElementById('ridLeadsList').innerHTML = interested.map(function (l) {
+      return '<div class="mini-lead-row"><div><a href="#" data-open-lead="' + l.id + '" style="font-weight:600;color:var(--text);">' + l.name + '</a>' +
+        '<div class="meta">' + (l.propertyInterest || '') + '</div></div>' +
+        '<span class="status-pill ' + reStatusClass(l.status) + '">' + l.status + '</span></div>';
+    }).join('') || '<div class="empty-note">No leads currently linked to this unit.</div>';
+    bindOpenLeadLinks('ridLeadsList');
+
+    showSection('viewReInventoryDetail');
+    renderReTimeline('ridTimeline', '/api/accounts/' + accountId + '/re/inventory/' + itemId + '/activity', 'No activity for this unit yet.');
+  }
+
+  document.getElementById('ridEditBtn').addEventListener('click', function () {
+    if (activeDetail && activeDetail.type === 'inventory') openReInventoryModal(activeDetail.id);
+  });
+  document.getElementById('ridBack').addEventListener('click', function (e) {
+    e.preventDefault(); activeDetail = null; switchView('inventory');
+  });
+
   function render(data) {
     currentData = data;
     document.getElementById('pageLoading').style.display = 'none';
@@ -956,6 +1204,14 @@
           });
       });
     });
+
+    // If a lead/broker/inventory detail view is open, refresh it in place
+    // with the freshly-loaded data instead of leaving it stale.
+    if (activeDetail) {
+      if (activeDetail.type === 'lead') openReLeadDetail(activeDetail.id);
+      else if (activeDetail.type === 'broker') openReBrokerDetail(activeDetail.id);
+      else if (activeDetail.type === 'inventory') openReInventoryDetail(activeDetail.id);
+    }
   }
 
   fetch('/api/me').then(function (res) {

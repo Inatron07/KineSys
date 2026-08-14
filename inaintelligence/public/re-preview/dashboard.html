@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dashboard · Real Estate CRM · KineSys InaIntelligence</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><img src="../logo-light.svg" alt="KineSys"> Kine<span class="accent">Sys</span><span class="sep">/</span>InaIntelligence</div>
+  <div class="module-tabs">
+    <a href="dashboard.html" class="active">Dashboard</a>
+    <a href="leads.html">Leads</a>
+    <a href="#">Brokers</a>
+    <a href="#">Inventory</a>
+    <a href="#">Accounting</a>
+    <a href="#">Team</a>
+  </div>
+  <div class="topbar-right">
+    <button class="tb-icon-btn" aria-label="Search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </button>
+    <button class="tb-icon-btn" aria-label="Notifications">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      <span class="dot"></span>
+    </button>
+    <div class="tb-avatar">IF</div>
+  </div>
+</div>
+
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1>Real Estate Dashboard</h1>
+      <p>Unified view of leads, brokers and deals &mdash; laid out like the LeadSquared walkthrough, running on KineSys / InaIntelligence.</p>
+    </div>
+    <div class="page-actions">
+      <button class="btn btn-secondary">Filter</button>
+      <button class="btn btn-primary">+ Add lead</button>
+    </div>
+  </div>
+
+  <div class="metric-grid">
+    <div class="metric-card"><div class="label">Total leads</div><div class="value">7</div></div>
+    <div class="metric-card"><div class="label">Engaged leads</div><div class="value">5</div></div>
+    <div class="metric-card"><div class="label">Unassigned</div><div class="value warn">1</div></div>
+    <div class="metric-card"><div class="label">Site visits</div><div class="value">2</div></div>
+    <div class="metric-card"><div class="label">Active brokers</div><div class="value">5</div></div>
+    <div class="metric-card"><div class="label">Overdue tasks</div><div class="value warn">3</div></div>
+  </div>
+
+  <div class="two-col-charts">
+    <div class="panel">
+      <div class="panel-head"><h3>Lead growth</h3><span class="sub">Last 30 days</span></div>
+      <div class="panel-body">
+        <svg viewBox="0 0 420 150" width="100%" height="150">
+          <polyline fill="rgba(34,211,238,.12)" stroke="none" points="10,140 10,90 50,84 90,78 130,70 170,58 210,50 250,44 290,38 330,30 370,22 410,16 410,140"/>
+          <polyline fill="none" stroke="#22d3ee" stroke-width="2.5" points="10,90 50,84 90,78 130,70 170,58 210,50 250,44 290,38 330,30 370,22 410,16"/>
+          <line x1="10" y1="140" x2="410" y2="140" stroke="#dfe4f0" stroke-width="1"/>
+        </svg>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>Lead pipeline</h3><span class="sub">By stage</span></div>
+      <div class="panel-body">
+        <svg viewBox="0 0 420 150" width="100%" height="150">
+          <text x="20" y="16" font-size="9" fill="#8892a8" font-family="Inter, sans-serif">7</text>
+          <rect x="15" y="18" width="34" height="112" rx="4" fill="#22d3ee"/>
+          <text x="70" y="46" font-size="9" fill="#8892a8" font-family="Inter, sans-serif">4</text>
+          <rect x="65" y="48" width="34" height="82" rx="4" fill="#0f6fb0"/>
+          <text x="120" y="86" font-size="9" fill="#8892a8" font-family="Inter, sans-serif">2</text>
+          <rect x="115" y="88" width="34" height="42" rx="4" fill="#c98a1c"/>
+          <text x="170" y="106" font-size="9" fill="#8892a8" font-family="Inter, sans-serif">1</text>
+          <rect x="165" y="108" width="34" height="22" rx="4" fill="#5b3fc0"/>
+          <text x="220" y="106" font-size="9" fill="#8892a8" font-family="Inter, sans-serif">1</text>
+          <rect x="215" y="108" width="34" height="22" rx="4" fill="#0e8f5f"/>
+          <text x="270" y="116" font-size="9" fill="#8892a8" font-family="Inter, sans-serif">1</text>
+          <rect x="265" y="118" width="34" height="12" rx="4" fill="#d64545"/>
+          <line x1="10" y1="130" x2="410" y2="130" stroke="#dfe4f0" stroke-width="1"/>
+        </svg>
+        <div class="chart-legend">
+          <span><i style="background:#22d3ee;"></i>New</span>
+          <span><i style="background:#0f6fb0;"></i>Contacted</span>
+          <span><i style="background:#c98a1c;"></i>Site Visit</span>
+          <span><i style="background:#5b3fc0;"></i>Negotiation</span>
+          <span><i style="background:#0e8f5f;"></i>Closed</span>
+          <span><i style="background:#d64545;"></i>Lost</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="three-col-charts">
+    <div class="panel">
+      <div class="panel-head"><h3>Team tasks summary</h3><span class="sub">This month</span></div>
+      <table>
+        <thead><tr><th>Owner</th><th>Total</th><th>Overdue</th><th>Pending</th><th>Completed</th></tr></thead>
+        <tbody>
+          <tr><td>Inacio Fernandes</td><td>18</td><td>2</td><td>3</td><td>13</td></tr>
+          <tr><td>Priya Sharma</td><td>12</td><td>1</td><td>2</td><td>9</td></tr>
+          <tr><td>Karan Mehta</td><td>9</td><td>0</td><td>1</td><td>8</td></tr>
+          <tr style="font-weight:700;"><td>Total</td><td>39</td><td>3</td><td>6</td><td>30</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>Lead source</h3><span class="sub">All time</span></div>
+      <div class="panel-body" style="display:flex;flex-direction:column;align-items:center;">
+        <svg viewBox="0 0 120 120" width="140" height="140">
+          <circle cx="60" cy="60" r="50" fill="none" stroke="#f0f3fa" stroke-width="16"/>
+          <circle cx="60" cy="60" r="50" fill="none" stroke="#22d3ee" stroke-width="16" stroke-dasharray="126 314" stroke-dashoffset="0" transform="rotate(-90 60 60)"/>
+          <circle cx="60" cy="60" r="50" fill="none" stroke="#7c5cff" stroke-width="16" stroke-dasharray="79 314" stroke-dashoffset="-126" transform="rotate(-90 60 60)"/>
+          <circle cx="60" cy="60" r="50" fill="none" stroke="#0e8f5f" stroke-width="16" stroke-dasharray="63 314" stroke-dashoffset="-205" transform="rotate(-90 60 60)"/>
+          <circle cx="60" cy="60" r="50" fill="none" stroke="#c98a1c" stroke-width="16" stroke-dasharray="46 314" stroke-dashoffset="-268" transform="rotate(-90 60 60)"/>
+        </svg>
+        <div class="chart-legend">
+          <span><i style="background:#22d3ee;"></i>Referral 40%</span>
+          <span><i style="background:#7c5cff;"></i>Direct 25%</span>
+          <span><i style="background:#0e8f5f;"></i>Inbound 20%</span>
+          <span><i style="background:#c98a1c;"></i>Other 15%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h3>Recent activity</h3><span class="sub">Ina + team</span></div>
+    <div class="timeline">
+      <div class="tl-item"><div class="tl-dot">&#8226;</div><div class="tl-body">Ina scanned the leads inbox and captured <b>Ravi Malhotra</b> &mdash; assigned to Karan Mehta.<div class="when">12 minutes ago</div></div></div>
+      <div class="tl-item"><div class="tl-dot">&#8226;</div><div class="tl-body">Divya Reddy moved from <b>Contacted</b> to <b>Site Visit</b>.<div class="when">1 hour ago &middot; Priya Sharma</div></div></div>
+      <div class="tl-item"><div class="tl-dot">&#8226;</div><div class="tl-body">Ina matched a pending payment to <b>Meera Nair</b> and marked it Received.<div class="when">3 hours ago</div></div></div>
+      <div class="tl-item"><div class="tl-dot">&#8226;</div><div class="tl-body">New unit added to inventory: <b>Skyline Heights A-1204</b>.<div class="when">Yesterday &middot; Inacio Fernandes</div></div></div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

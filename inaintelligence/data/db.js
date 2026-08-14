@@ -639,8 +639,8 @@ async function addRELead(accountId, { name, phone, email, source, propertyIntere
     [leadId, accountId, name, phone || null, email || null, source || 'Manual entry', propertyInterest || null, Number(budget) || 0, leadStatus, brokerId || null, nextFollowup || null, remarks || null]
   );
   await pool.query(
-    'INSERT INTO activity (id, account_id, text, actor_name) VALUES ($1,$2,$3,$4)',
-    [id('act'), accountId, `${actorName || 'Someone'} added a new lead: ${name}.`, actorName || null]
+    'INSERT INTO activity (id, account_id, text, actor_name, re_lead_id) VALUES ($1,$2,$3,$4,$5)',
+    [id('act'), accountId, `${actorName || 'Someone'} added a new lead: ${name}.`, actorName || null, leadId]
   );
   return { ok: true, id: leadId };
 }
@@ -658,10 +658,46 @@ async function updateRELead(accountId, leadId, { name, phone, email, source, pro
   );
   const note = rows[0].status !== leadStatus ? ` — stage ${rows[0].status} → ${leadStatus}` : '';
   await pool.query(
-    'INSERT INTO activity (id, account_id, text, actor_name) VALUES ($1,$2,$3,$4)',
-    [id('act'), accountId, `${actorName || 'Someone'} updated lead ${name}${note}.`, actorName || null]
+    'INSERT INTO activity (id, account_id, text, actor_name, re_lead_id) VALUES ($1,$2,$3,$4,$5)',
+    [id('act'), accountId, `${actorName || 'Someone'} updated lead ${name}${note}.`, actorName || null, leadId]
   );
   return { ok: true };
+}
+
+async function addRELeadNote(accountId, leadId, note, actorName) {
+  const { rows } = await pool.query('SELECT id, name FROM re_leads WHERE id=$1 AND account_id=$2', [leadId, accountId]);
+  if (!rows[0]) return { error: 'Lead not found.' };
+  const text = (note || '').trim();
+  if (!text) return { error: 'Note text is required.' };
+  await pool.query(
+    'INSERT INTO activity (id, account_id, text, actor_name, re_lead_id) VALUES ($1,$2,$3,$4,$5)',
+    [id('act'), accountId, `Note: ${text}`, actorName || null, leadId]
+  );
+  return { ok: true };
+}
+
+async function getRELeadActivity(accountId, leadId) {
+  const { rows } = await pool.query(
+    'SELECT text, actor_name, at FROM activity WHERE account_id=$1 AND re_lead_id=$2 ORDER BY at DESC LIMIT 100',
+    [accountId, leadId]
+  );
+  return rows.map((r) => ({ text: r.text, actor: r.actor_name, at: new Date(r.at).getTime() }));
+}
+
+async function getREBrokerActivity(accountId, brokerId) {
+  const { rows } = await pool.query(
+    'SELECT text, actor_name, at FROM activity WHERE account_id=$1 AND re_broker_id=$2 ORDER BY at DESC LIMIT 100',
+    [accountId, brokerId]
+  );
+  return rows.map((r) => ({ text: r.text, actor: r.actor_name, at: new Date(r.at).getTime() }));
+}
+
+async function getREInventoryActivity(accountId, itemId) {
+  const { rows } = await pool.query(
+    'SELECT text, actor_name, at FROM activity WHERE account_id=$1 AND re_inventory_id=$2 ORDER BY at DESC LIMIT 100',
+    [accountId, itemId]
+  );
+  return rows.map((r) => ({ text: r.text, actor: r.actor_name, at: new Date(r.at).getTime() }));
 }
 
 async function addREBroker(accountId, { name, phone, email, zone, status, salesTarget, revenueAchieved, activeLeads, closedDeals, commissionPct }, actorName) {
@@ -674,8 +710,8 @@ async function addREBroker(accountId, { name, phone, email, zone, status, salesT
     [brokerId, accountId, name, phone || null, email || null, zone || null, Number(activeLeads) || 0, Number(closedDeals) || 0, commissionPct || null, Number(salesTarget) || 0, Number(revenueAchieved) || 0, brokerStatus]
   );
   await pool.query(
-    'INSERT INTO activity (id, account_id, text, actor_name) VALUES ($1,$2,$3,$4)',
-    [id('act'), accountId, `${actorName || 'Someone'} added a new broker: ${name}.`, actorName || null]
+    'INSERT INTO activity (id, account_id, text, actor_name, re_broker_id) VALUES ($1,$2,$3,$4,$5)',
+    [id('act'), accountId, `${actorName || 'Someone'} added a new broker: ${name}.`, actorName || null, brokerId]
   );
   return { ok: true, id: brokerId };
 }
@@ -693,8 +729,8 @@ async function updateREBroker(accountId, brokerId, { name, phone, email, zone, s
   );
   const note = rows[0].status !== brokerStatus ? ` — status ${rows[0].status} → ${brokerStatus}` : '';
   await pool.query(
-    'INSERT INTO activity (id, account_id, text, actor_name) VALUES ($1,$2,$3,$4)',
-    [id('act'), accountId, `${actorName || 'Someone'} updated broker ${name}${note}.`, actorName || null]
+    'INSERT INTO activity (id, account_id, text, actor_name, re_broker_id) VALUES ($1,$2,$3,$4,$5)',
+    [id('act'), accountId, `${actorName || 'Someone'} updated broker ${name}${note}.`, actorName || null, brokerId]
   );
   return { ok: true };
 }
@@ -709,8 +745,8 @@ async function addREInventory(accountId, { projectName, unitNo, type, areaSqft, 
     [itemId, accountId, projectName, unitNo || null, type || null, Number(areaSqft) || null, Number(price) || 0, invStatus, location || null]
   );
   await pool.query(
-    'INSERT INTO activity (id, account_id, text, actor_name) VALUES ($1,$2,$3,$4)',
-    [id('act'), accountId, `${actorName || 'Someone'} added a new inventory unit: ${projectName}${unitNo ? ' ' + unitNo : ''}.`, actorName || null]
+    'INSERT INTO activity (id, account_id, text, actor_name, re_inventory_id) VALUES ($1,$2,$3,$4,$5)',
+    [id('act'), accountId, `${actorName || 'Someone'} added a new inventory unit: ${projectName}${unitNo ? ' ' + unitNo : ''}.`, actorName || null, itemId]
   );
   return { ok: true, id: itemId };
 }
@@ -727,8 +763,8 @@ async function updateREInventory(accountId, itemId, { projectName, unitNo, type,
   );
   const note = rows[0].status !== invStatus ? ` — status ${rows[0].status} → ${invStatus}` : '';
   await pool.query(
-    'INSERT INTO activity (id, account_id, text, actor_name) VALUES ($1,$2,$3,$4)',
-    [id('act'), accountId, `${actorName || 'Someone'} updated ${projectName}${unitNo ? ' ' + unitNo : ''}${note}.`, actorName || null]
+    'INSERT INTO activity (id, account_id, text, actor_name, re_inventory_id) VALUES ($1,$2,$3,$4,$5)',
+    [id('act'), accountId, `${actorName || 'Someone'} updated ${projectName}${unitNo ? ' ' + unitNo : ''}${note}.`, actorName || null, itemId]
   );
   return { ok: true };
 }
@@ -857,5 +893,6 @@ module.exports = {
   findAccount, getAccountDetail, runAccountAction, addTeamMember, resetPassword,
   addLead, updateLeadStatus, updateLead, getLeadActivity, assignTask, completeTask,
   addRELead, updateRELead, addREBroker, updateREBroker, addREInventory, updateREInventory, addREAccounting, updateREAccounting,
+  addRELeadNote, getRELeadActivity, getREBrokerActivity, getREInventoryActivity,
   createAccount, MODULE_PRESETS, LICENSE_TERMS
 };

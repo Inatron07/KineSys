@@ -224,6 +224,19 @@ app.post('/api/accounts/:id/re/leads/:leadId', requireAuth, asyncRoute(async (re
   res.json({ ok: true });
 }));
 
+app.get('/api/accounts/:id/re/leads/:leadId/activity', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const activity = await db.getRELeadActivity(req.params.id, req.params.leadId);
+  res.json({ activity });
+}));
+
+app.post('/api/accounts/:id/re/leads/:leadId/note', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const result = await db.addRELeadNote(req.params.id, req.params.leadId, (req.body || {}).note, actorNameFor(req.session.auth));
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ ok: true });
+}));
+
 app.post('/api/accounts/:id/re/brokers', requireAuth, asyncRoute(async (req, res) => {
   if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
   const result = await db.addREBroker(req.params.id, req.body || {}, actorNameFor(req.session.auth));
@@ -238,6 +251,12 @@ app.post('/api/accounts/:id/re/brokers/:brokerId', requireAuth, asyncRoute(async
   res.json({ ok: true });
 }));
 
+app.get('/api/accounts/:id/re/brokers/:brokerId/activity', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const activity = await db.getREBrokerActivity(req.params.id, req.params.brokerId);
+  res.json({ activity });
+}));
+
 app.post('/api/accounts/:id/re/inventory', requireAuth, asyncRoute(async (req, res) => {
   if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
   const result = await db.addREInventory(req.params.id, req.body || {}, actorNameFor(req.session.auth));
@@ -250,6 +269,12 @@ app.post('/api/accounts/:id/re/inventory/:itemId', requireAuth, asyncRoute(async
   const result = await db.updateREInventory(req.params.id, req.params.itemId, req.body || {}, actorNameFor(req.session.auth));
   if (result.error) return res.status(400).json({ error: result.error });
   res.json({ ok: true });
+}));
+
+app.get('/api/accounts/:id/re/inventory/:itemId/activity', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const activity = await db.getREInventoryActivity(req.params.id, req.params.itemId);
+  res.json({ activity });
 }));
 
 app.post('/api/accounts/:id/re/accounting', requireAuth, asyncRoute(async (req, res) => {

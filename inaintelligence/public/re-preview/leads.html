@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Leads · Real Estate CRM · KineSys InaIntelligence</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><img src="../logo-light.svg" alt="KineSys"> Kine<span class="accent">Sys</span><span class="sep">/</span>InaIntelligence</div>
+  <div class="module-tabs">
+    <a href="dashboard.html">Dashboard</a>
+    <a href="leads.html" class="active">Leads</a>
+    <a href="#">Brokers</a>
+    <a href="#">Inventory</a>
+    <a href="#">Accounting</a>
+    <a href="#">Team</a>
+  </div>
+  <div class="topbar-right">
+    <button class="tb-icon-btn" aria-label="Search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </button>
+    <button class="tb-icon-btn" aria-label="Notifications">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      <span class="dot"></span>
+    </button>
+    <div class="tb-avatar">IF</div>
+  </div>
+</div>
+
+<div class="page-with-rail">
+  <div class="rail">
+    <div class="rail-head"><h4>Smart views</h4><button class="rail-add">+</button></div>
+    <div class="rail-item active"><span>All leads</span><span class="rail-count">7</span></div>
+    <div class="rail-item"><span>New leads</span><span class="rail-count">2</span></div>
+    <div class="rail-item"><span>Follow up task</span><span class="rail-count">1</span></div>
+    <div class="rail-item"><span>Call back</span><span class="rail-count">1</span></div>
+    <div class="rail-item"><span>Site visit</span><span class="rail-count">2</span></div>
+    <div class="rail-item"><span>Site visit follow-up</span><span class="rail-count">1</span></div>
+    <div class="rail-item"><span>Closure expected</span><span class="rail-count">1</span></div>
+    <div class="rail-item"><span>Booking task</span><span class="rail-count">0</span></div>
+  </div>
+
+  <div class="rail-content">
+    <div class="page-head">
+      <div>
+        <h1>Manage leads</h1>
+        <p>Every lead across every broker, in one table &mdash; styled after LeadSquared's Manage Contacts view.</p>
+      </div>
+      <div class="page-actions">
+        <button class="btn btn-primary">+ Add new lead</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="toolbar">
+        <div class="search-box">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" placeholder="Search here">
+        </div>
+        <button class="filter-chip">My Filters &#8964;</button>
+        <button class="filter-chip">+ Filter</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th><input type="checkbox"></th>
+            <th>Lead name</th>
+            <th>Actions</th>
+            <th>Score</th>
+            <th>Stage</th>
+            <th>Owner</th>
+            <th>Budget</th>
+            <th>Modified on</th>
+            <th>City</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="tr-link">
+            <td><input type="checkbox"></td>
+            <td class="cell-name"><span class="row-avatar" style="background:#22d3ee;">RM</span><a href="lead-detail.html">Ravi Malhotra</a></td>
+            <td class="row-actions"><button title="Call">&#9742;</button><button title="Email">&#9993;</button><button title="Message">&#9998;</button></td>
+            <td class="score pos">18</td>
+            <td><span class="pill pill-new">New</span></td>
+            <td>Karan Mehta</td>
+            <td>&#8377;85L &ndash; &#8377;1.2Cr</td>
+            <td>14 Aug, 02:44 PM</td>
+            <td>Mumbai</td>
+          </tr>
+          <tr class="tr-link">
+            <td><input type="checkbox"></td>
+            <td class="cell-name"><span class="row-avatar" style="background:#0e8f5f;">DR</span><a href="lead-detail.html">Divya Reddy</a></td>
+            <td class="row-actions"><button title="Call">&#9742;</button><button title="Email">&#9993;</button><button title="Message">&#9998;</button></td>
+            <td class="score pos">25</td>
+            <td><span class="pill pill-sitevisit">Site Visit</span></td>
+            <td>Priya Sharma</td>
+            <td>&#8377;1.5Cr &ndash; &#8377;2Cr</td>
+            <td>13 Aug, 11:20 AM</td>
+            <td>Mumbai</td>
+          </tr>
+          <tr class="tr-link">
+            <td><input type="checkbox"></td>
+            <td class="cell-name"><span class="row-avatar" style="background:#d64545;">FS</span><a href="lead-detail.html">Farhan Sheikh</a></td>
+            <td class="row-actions"><button title="Call">&#9742;</button><button title="Email">&#9993;</button><button title="Message">&#9998;</button></td>
+            <td class="score neg">-5</td>
+            <td><span class="pill pill-new">New</span></td>
+            <td><span style="color:var(--warn);">Unassigned</span></td>
+            <td>&#8377;60L &ndash; &#8377;80L</td>
+            <td>12 Aug, 09:02 AM</td>
+            <td>Pune</td>
+          </tr>
+          <tr class="tr-link">
+            <td><input type="checkbox"></td>
+            <td class="cell-name"><span class="row-avatar" style="background:#7c5cff;">MN</span><a href="lead-detail.html">Meera Nair</a></td>
+            <td class="row-actions"><button title="Call">&#9742;</button><button title="Email">&#9993;</button><button title="Message">&#9998;</button></td>
+            <td class="score pos">31</td>
+            <td><span class="pill pill-closed">Closed</span></td>
+            <td>Karan Mehta</td>
+            <td>&#8377;2.1Cr</td>
+            <td>10 Aug, 04:15 PM</td>
+            <td>Bengaluru</td>
+          </tr>
+          <tr class="tr-link">
+            <td><input type="checkbox"></td>
+            <td class="cell-name"><span class="row-avatar" style="background:#c98a1c;">AK</span><a href="lead-detail.html">Aisha Khan</a></td>
+            <td class="row-actions"><button title="Call">&#9742;</button><button title="Email">&#9993;</button><button title="Message">&#9998;</button></td>
+            <td class="score pos">9</td>
+            <td><span class="pill pill-contacted">Contacted</span></td>
+            <td>Priya Sharma</td>
+            <td>&#8377;90L &ndash; &#8377;1.1Cr</td>
+            <td>09 Aug, 01:30 PM</td>
+            <td>Mumbai</td>
+          </tr>
+          <tr class="tr-link">
+            <td><input type="checkbox"></td>
+            <td class="cell-name"><span class="row-avatar" style="background:#0f6fb0;">RV</span><a href="lead-detail.html">Rohan Verma</a></td>
+            <td class="row-actions"><button title="Call">&#9742;</button><button title="Email">&#9993;</button><button title="Message">&#9998;</button></td>
+            <td class="score neg">-2</td>
+            <td><span class="pill pill-lost">Lost</span></td>
+            <td>Karan Mehta</td>
+            <td>&#8377;70L</td>
+            <td>05 Aug, 10:05 AM</td>
+            <td>Pune</td>
+          </tr>
+          <tr class="tr-link">
+            <td><input type="checkbox"></td>
+            <td class="cell-name"><span class="row-avatar" style="background:#5b3fc0;">NK</span><a href="lead-detail.html">Neha Kapoor</a></td>
+            <td class="row-actions"><button title="Call">&#9742;</button><button title="Email">&#9993;</button><button title="Message">&#9998;</button></td>
+            <td class="score pos">22</td>
+            <td><span class="pill pill-negotiation">Negotiation</span></td>
+            <td>Priya Sharma</td>
+            <td>&#8377;1.8Cr &ndash; &#8377;2.4Cr</td>
+            <td>02 Aug, 03:44 PM</td>
+            <td>Mumbai</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="pagination">
+        <span>Showing 1&ndash;7 of 7</span>
+        <div class="page-btns"><button class="active">1</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

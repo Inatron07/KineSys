@@ -162,6 +162,15 @@ CREATE INDEX IF NOT EXISTS idx_re_brokers_account ON re_brokers(account_id);
 CREATE INDEX IF NOT EXISTS idx_re_inventory_account ON re_inventory(account_id);
 CREATE INDEX IF NOT EXISTS idx_re_accounting_account ON re_accounting(account_id);
 
+-- Per-item activity timelines for the Real Estate CRM (must come after
+-- re_leads/re_brokers/re_inventory exist, since these reference them).
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS re_lead_id text REFERENCES re_leads(id) ON DELETE SET NULL;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS re_broker_id text REFERENCES re_brokers(id) ON DELETE SET NULL;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS re_inventory_id text REFERENCES re_inventory(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_activity_re_lead ON activity(re_lead_id);
+CREATE INDEX IF NOT EXISTS idx_activity_re_broker ON activity(re_broker_id);
+CREATE INDEX IF NOT EXISTS idx_activity_re_inventory ON activity(re_inventory_id);
+
 CREATE INDEX IF NOT EXISTS idx_leads_account ON leads(account_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_account ON tasks(account_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_id);
