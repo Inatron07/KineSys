@@ -461,6 +461,8 @@
     return 'status-' + String(status || '').replace(/\s+/g, '');
   }
 
+  var PENCIL_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path></svg>';
+
   function renderRealEstate(data) {
     var viewerIsPrimary = !!data.viewerIsPrimary;
 
@@ -505,7 +507,7 @@
         '<td>' + (l.broker || '<span style="color:var(--warn);">Unassigned</span>') + '</td>' +
         '<td><span class="status-pill ' + reStatusClass(l.status) + '">' + l.status + '</span></td>' +
         '<td>' + (l.nextFollowup || '—') + '</td>' +
-        '<td style="text-align:right;"><button class="link-btn" data-re-edit-lead="' + l.id + '">Edit</button></td></tr>';
+        '<td style="text-align:right;"><button class="icon-btn" title="Edit lead" data-re-edit-lead="' + l.id + '">' + PENCIL_ICON + '</button></td></tr>';
     }).join('') || '<tr><td colspan="6" class="empty-note">No leads yet.</td></tr>';
     document.querySelectorAll('[data-re-edit-lead]').forEach(function (btn) {
       btn.addEventListener('click', function () { openReLeadModal(btn.getAttribute('data-re-edit-lead')); });
@@ -520,7 +522,7 @@
       var fillClass = pct === 0 ? 'zero' : pct < 50 ? 'low' : '';
       return '<div class="re-broker-card">' +
         '<div class="row"><span class="name"><a href="#" data-open-broker="' + b.id + '" style="color:var(--text);">' + b.name + '</a></span>' +
-        '<span class="meta">' + (b.zone || '') + ' · <span class="status-pill ' + reStatusClass(b.status) + '">' + b.status + '</span> · <button class="link-btn" data-re-edit-broker="' + b.id + '">Edit</button></span></div>' +
+        '<span class="meta" style="display:flex;align-items:center;gap:8px;">' + (b.zone || '') + ' <span class="status-pill ' + reStatusClass(b.status) + '">' + b.status + '</span> <button class="icon-btn" title="Edit broker" data-re-edit-broker="' + b.id + '">' + PENCIL_ICON + '</button></span></div>' +
         '<p class="target">Active leads: ' + (b.activeLeads || 0) + ' · Closed deals: ' + (b.closedDeals || 0) + ' · Target ' + reMoney(b.salesTarget) + ' · Achieved ' + reMoney(b.revenueAchieved) + '</p>' +
         '<div class="re-progress-track"><div class="re-progress-fill ' + fillClass + '" style="width:' + Math.min(pct, 100) + '%;"></div></div>' +
         '<p class="re-progress-pct">' + pct + '% of target</p>' +
@@ -540,7 +542,7 @@
         '<td>' + reMoney(i.price) + '</td>' +
         '<td><span class="status-pill ' + reStatusClass(i.status) + '">' + i.status + '</span></td>' +
         '<td>' + (i.location || '—') + '</td>' +
-        '<td style="text-align:right;"><button class="link-btn" data-re-edit-inv="' + i.id + '">Edit</button></td></tr>';
+        '<td style="text-align:right;"><button class="icon-btn" title="Edit unit" data-re-edit-inv="' + i.id + '">' + PENCIL_ICON + '</button></td></tr>';
     }).join('') || '<tr><td colspan="7" class="empty-note">No inventory yet.</td></tr>';
     document.querySelectorAll('[data-re-edit-inv]').forEach(function (btn) {
       btn.addEventListener('click', function () { openReInventoryModal(btn.getAttribute('data-re-edit-inv')); });
@@ -554,7 +556,7 @@
       return '<tr><td>' + (t.clientName || '—') + '</td><td>' + (t.property || '—') + '</td><td>' + (t.type || '—') + '</td>' +
         '<td>' + reMoney(t.amount) + '</td><td>' + (t.brokerName || '—') + '</td><td>' + (t.paymentMode || '—') + '</td>' +
         '<td><span class="status-pill ' + reStatusClass(t.status) + '">' + t.status + '</span></td>' +
-        '<td style="text-align:right;"><button class="link-btn" data-re-edit-txn="' + t.id + '">Edit</button></td></tr>';
+        '<td style="text-align:right;"><button class="icon-btn" title="Edit transaction" data-re-edit-txn="' + t.id + '">' + PENCIL_ICON + '</button></td></tr>';
     }).join('') || '<tr><td colspan="8" class="empty-note">No transactions yet.</td></tr>';
     document.querySelectorAll('[data-re-edit-txn]').forEach(function (btn) {
       btn.addEventListener('click', function () { openReAccountingModal(btn.getAttribute('data-re-edit-txn')); });
@@ -618,6 +620,7 @@
     }).join('');
     document.getElementById('reLeadBroker').innerHTML = brokerOptions;
     document.getElementById('reLeadFollowup').value = l ? (l.nextFollowup || '') : '';
+    document.getElementById('reLeadNationality').value = l ? (l.nationality || '') : '';
     document.getElementById('reLeadRemarks').value = l ? (l.remarks || '') : '';
     reLeadModal.classList.add('show');
   }
@@ -638,6 +641,7 @@
       status: document.getElementById('reLeadStatus').value,
       brokerId: document.getElementById('reLeadBroker').value || null,
       nextFollowup: document.getElementById('reLeadFollowup').value || null,
+      nationality: document.getElementById('reLeadNationality').value.trim(),
       remarks: document.getElementById('reLeadRemarks').value.trim()
     };
     var btn = document.getElementById('reLeadSave');
@@ -678,6 +682,8 @@
     document.getElementById('reBrokerClosedDeals').value = b ? (b.closedDeals || 0) : 0;
     document.getElementById('reBrokerTarget').value = b ? (b.salesTarget || 0) : 0;
     document.getElementById('reBrokerRevenue').value = b ? (b.revenueAchieved || 0) : 0;
+    document.getElementById('reBrokerLicense').value = b ? (b.licenseNo || '') : '';
+    document.getElementById('reBrokerJoined').value = b ? (b.joinedAt || '') : '';
     reBrokerModal.classList.add('show');
   }
 
@@ -697,7 +703,9 @@
       activeLeads: Number(document.getElementById('reBrokerActiveLeads').value) || 0,
       closedDeals: Number(document.getElementById('reBrokerClosedDeals').value) || 0,
       salesTarget: Number(document.getElementById('reBrokerTarget').value) || 0,
-      revenueAchieved: Number(document.getElementById('reBrokerRevenue').value) || 0
+      revenueAchieved: Number(document.getElementById('reBrokerRevenue').value) || 0,
+      licenseNo: document.getElementById('reBrokerLicense').value.trim(),
+      joinedAt: document.getElementById('reBrokerJoined').value || null
     };
     var btn = document.getElementById('reBrokerSave');
     btn.disabled = true;
@@ -734,6 +742,13 @@
     document.getElementById('reInvPrice').value = i ? (i.price || 0) : '';
     fillSelect(document.getElementById('reInvStatus'), RE_INVENTORY_STATUSES, i ? i.status : 'Available');
     document.getElementById('reInvLocation').value = i ? (i.location || '') : '';
+    document.getElementById('reInvBedrooms').value = i && i.bedrooms != null ? i.bedrooms : '';
+    document.getElementById('reInvBathrooms').value = i && i.bathrooms != null ? i.bathrooms : '';
+    document.getElementById('reInvPossession').value = i ? (i.possessionDate || '') : '';
+    document.getElementById('reInvAmenities').value = i ? (i.amenities || '') : '';
+    document.getElementById('reInvDescription').value = i ? (i.description || '') : '';
+    document.getElementById('reInvLat').value = i && i.latitude != null ? i.latitude : '';
+    document.getElementById('reInvLng').value = i && i.longitude != null ? i.longitude : '';
     reInventoryModal.classList.add('show');
   }
 
@@ -750,7 +765,14 @@
       areaSqft: Number(document.getElementById('reInvArea').value) || 0,
       price: Number(document.getElementById('reInvPrice').value) || 0,
       status: document.getElementById('reInvStatus').value,
-      location: document.getElementById('reInvLocation').value.trim()
+      location: document.getElementById('reInvLocation').value.trim(),
+      bedrooms: document.getElementById('reInvBedrooms').value === '' ? null : Number(document.getElementById('reInvBedrooms').value),
+      bathrooms: document.getElementById('reInvBathrooms').value === '' ? null : Number(document.getElementById('reInvBathrooms').value),
+      possessionDate: document.getElementById('reInvPossession').value || null,
+      amenities: document.getElementById('reInvAmenities').value.trim(),
+      description: document.getElementById('reInvDescription').value.trim(),
+      latitude: document.getElementById('reInvLat').value.trim() === '' ? null : Number(document.getElementById('reInvLat').value),
+      longitude: document.getElementById('reInvLng').value.trim() === '' ? null : Number(document.getElementById('reInvLng').value)
     };
     var btn = document.getElementById('reInventorySave');
     btn.disabled = true;
@@ -907,6 +929,16 @@
     document.querySelectorAll('.view-section').forEach(function (s) { s.classList.remove('active'); });
     var el = document.getElementById(sectionId);
     if (el) el.classList.add('active');
+    updateInaFloatVisibility(sectionId === 'viewDashboard');
+  }
+
+  // The Ina agent widget floats bottom-right only while the Real Estate
+  // dashboard is the visible section — it tucks away everywhere else.
+  function updateInaFloatVisibility(show) {
+    var wrap = document.getElementById('reInaFloat');
+    if (!wrap) return;
+    wrap.style.display = show ? 'flex' : 'none';
+    if (!show) document.getElementById('reInaFloatWindow').style.display = 'none';
   }
 
   function renderReTimeline(elId, url, emptyText) {
@@ -928,6 +960,23 @@
     });
   }
 
+  // Saves a lead with one or more fields overridden (e.g. just brokerId),
+  // reusing the full update-lead endpoint so nothing else on the lead gets
+  // clobbered. Used by the reassign/unassign broker controls below.
+  function saveReLeadFields(leadId, overrides) {
+    var l = currentData.leads.filter(function (x) { return x.id === leadId; })[0];
+    if (!l) return null;
+    var payload = {
+      name: l.name, phone: l.phone, email: l.email, source: l.source,
+      propertyInterest: l.propertyInterest, budget: l.budget, status: l.status,
+      brokerId: l.brokerId, nextFollowup: l.nextFollowup, nationality: l.nationality, remarks: l.remarks
+    };
+    for (var k in overrides) { payload[k] = overrides[k]; }
+    return fetch('/api/accounts/' + accountId + '/re/leads/' + leadId, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    }).then(function (res) { return res.json().then(function (d) { return { ok: res.ok, d: d }; }); });
+  }
+
   function openReLeadDetail(leadId) {
     if (!currentData) return;
     var l = currentData.leads.filter(function (x) { return x.id === leadId; })[0];
@@ -946,10 +995,14 @@
     document.getElementById('rldBudget').textContent = reMoney(l.budget);
     var ageDays = l.createdAt ? Math.max(0, Math.floor((Date.now() - l.createdAt) / 86400000)) : 0;
     document.getElementById('rldAge').textContent = ageDays + (ageDays === 1 ? ' day' : ' days');
-    document.getElementById('rldOwner').textContent = l.broker || 'Unassigned';
+    var ownerOptions = '<option value="">Unassigned</option>' + (currentData.brokers || []).map(function (b) {
+      return '<option value="' + b.id + '"' + (l.brokerId === b.id ? ' selected' : '') + '>' + b.name + '</option>';
+    }).join('');
+    document.getElementById('rldOwnerSelect').innerHTML = ownerOptions;
     document.getElementById('rldSource').textContent = l.source || '—';
     document.getElementById('rldInterest').textContent = l.propertyInterest || '—';
     document.getElementById('rldFollowup').textContent = l.nextFollowup || '—';
+    document.getElementById('rldNationality').textContent = l.nationality || '—';
 
     showSection('viewReLeadDetail');
     renderReTimeline('rldTimeline', '/api/accounts/' + accountId + '/re/leads/' + leadId + '/activity', 'No activity on this lead yet.');
@@ -960,6 +1013,16 @@
   });
   document.getElementById('rldBack').addEventListener('click', function (e) {
     e.preventDefault(); activeDetail = null; switchView('releads');
+  });
+  document.getElementById('rldOwnerSelect').addEventListener('change', function () {
+    if (!activeDetail || activeDetail.type !== 'lead') return;
+    var select = this;
+    var newBrokerId = select.value || null;
+    saveReLeadFields(activeDetail.id, { brokerId: newBrokerId }).then(function (r) {
+      if (!r.ok) { showToast(r.d.error); return; }
+      showToast('Broker updated.');
+      loadAccount();
+    });
   });
   document.getElementById('rldNoteSubmit').addEventListener('click', function () {
     var input = document.getElementById('rldNoteInput');
@@ -998,6 +1061,8 @@
     document.getElementById('rbdCommission').textContent = b.commissionPct || '—';
     document.getElementById('rbdTarget').textContent = reMoney(b.salesTarget);
     document.getElementById('rbdAchieved').textContent = reMoney(b.revenueAchieved);
+    document.getElementById('rbdLicense').textContent = b.licenseNo || '—';
+    document.getElementById('rbdJoined').textContent = b.joinedAt || '—';
     var pct = Math.round((b.achievedPct || 0) * 100);
     var fillClass = pct === 0 ? 'zero' : pct < 50 ? 'low' : '';
     document.getElementById('rbdProgressFill').className = 're-progress-fill' + (fillClass ? ' ' + fillClass : '');
@@ -1009,9 +1074,25 @@
     document.getElementById('rbdLeadsList').innerHTML = assigned.map(function (l) {
       return '<div class="mini-lead-row"><div><a href="#" data-open-lead="' + l.id + '" style="font-weight:600;color:var(--text);">' + l.name + '</a>' +
         '<div class="meta">' + (l.propertyInterest || 'No property noted') + '</div></div>' +
-        '<span class="status-pill ' + reStatusClass(l.status) + '">' + l.status + '</span></div>';
+        '<span style="display:flex;align-items:center;gap:10px;"><span class="status-pill ' + reStatusClass(l.status) + '">' + l.status + '</span>' +
+        '<button class="link-btn danger" data-unassign-lead="' + l.id + '">Remove</button></span></div>';
     }).join('') || '<div class="empty-note">No leads assigned to this broker yet.</div>';
     bindOpenLeadLinks('rbdLeadsList');
+    document.querySelectorAll('#rbdLeadsList [data-unassign-lead]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        saveReLeadFields(btn.getAttribute('data-unassign-lead'), { brokerId: null }).then(function (r) {
+          if (!r.ok) { showToast(r.d.error); return; }
+          showToast('Lead unassigned.');
+          loadAccount();
+        });
+      });
+    });
+
+    var assignable = currentData.leads.filter(function (l) { return l.brokerId !== brokerId; });
+    document.getElementById('rbdAssignSelect').innerHTML = '<option value="">Choose a lead to assign…</option>' +
+      assignable.map(function (l) {
+        return '<option value="' + l.id + '">' + l.name + (l.broker ? ' (currently ' + l.broker + ')' : ' (unassigned)') + '</option>';
+      }).join('');
 
     showSection('viewReBrokerDetail');
     renderReTimeline('rbdTimeline', '/api/accounts/' + accountId + '/re/brokers/' + brokerId + '/activity', 'No activity for this broker yet.');
@@ -1022,6 +1103,16 @@
   });
   document.getElementById('rbdBack').addEventListener('click', function (e) {
     e.preventDefault(); activeDetail = null; switchView('brokers');
+  });
+  document.getElementById('rbdAssignBtn').addEventListener('click', function () {
+    if (!activeDetail || activeDetail.type !== 'broker') return;
+    var leadId = document.getElementById('rbdAssignSelect').value;
+    if (!leadId) { showToast('Pick a lead to assign first.'); return; }
+    saveReLeadFields(leadId, { brokerId: activeDetail.id }).then(function (r) {
+      if (!r.ok) { showToast(r.d.error); return; }
+      showToast('Lead assigned.');
+      loadAccount();
+    });
   });
 
   function openReInventoryDetail(itemId) {
@@ -1041,6 +1132,18 @@
     document.getElementById('ridType').textContent = i.type || '—';
     document.getElementById('ridLocation').textContent = i.location || '—';
     document.getElementById('ridUnitNo').textContent = i.unitNo || '—';
+    document.getElementById('ridBedrooms').textContent = i.bedrooms != null ? i.bedrooms : '—';
+    document.getElementById('ridBathrooms').textContent = i.bathrooms != null ? i.bathrooms : '—';
+    document.getElementById('ridPossession').textContent = i.possessionDate || '—';
+    document.getElementById('ridAmenities').textContent = i.amenities || 'No amenities listed.';
+    document.getElementById('ridDescription').textContent = i.description || 'No description on file.';
+
+    var mapQuery = (i.latitude != null && i.longitude != null)
+      ? (i.latitude + ',' + i.longitude)
+      : [i.location, i.projectName].filter(Boolean).join(', ');
+    document.getElementById('ridMap').src = mapQuery
+      ? 'https://maps.google.com/maps?q=' + encodeURIComponent(mapQuery) + '&z=14&output=embed'
+      : 'https://maps.google.com/maps?q=India&z=4&output=embed';
 
     var interested = currentData.leads.filter(function (l) {
       return l.propertyInterest && i.projectName && l.propertyInterest.toLowerCase().indexOf(i.projectName.toLowerCase()) !== -1;
@@ -1250,6 +1353,7 @@
     document.querySelectorAll('.view-section').forEach(function (section) {
       section.classList.toggle('active', section.id === 'view' + view.charAt(0).toUpperCase() + view.slice(1));
     });
+    updateInaFloatVisibility(view === 'dashboard');
   }
 
   document.querySelectorAll('.side-nav-item').forEach(function (item) {
@@ -1262,5 +1366,14 @@
     var shell = document.getElementById('shell');
     var collapsed = shell.classList.toggle('collapsed');
     document.getElementById('sideToggle').textContent = collapsed ? '⟩⟩' : '⟨⟨';
+  });
+
+  // ---- Ina agent: floating widget ----
+  document.getElementById('reInaFloatToggle').addEventListener('click', function () {
+    var win = document.getElementById('reInaFloatWindow');
+    win.style.display = win.style.display === 'none' ? 'block' : 'none';
+  });
+  document.getElementById('reInaFloatClose').addEventListener('click', function () {
+    document.getElementById('reInaFloatWindow').style.display = 'none';
   });
 })();

@@ -154,14 +154,29 @@ Every lead, broker, and inventory unit now has its own detail page too
 (click the name), mirroring the LeadSquared-style contact/lead layout
 the team reviewed: a profile card with stats, and a real activity
 timeline pulled from Postgres. Leads also get a notes box that logs
-straight into that lead's timeline. Broker pages list every lead
-currently assigned to them; inventory pages list any leads whose
-"property interest" mentions that project. A static side-by-side
-mockup of this layout (not wired to the backend) lives in
-`public/re-preview/` if you want to compare.
+straight into that lead's timeline, plus an owner/broker dropdown that
+reassigns them in place. Broker pages list every lead currently
+assigned to them with a one-click "Remove", and an "+ Assign" picker
+to add more. Inventory pages list any leads whose "property interest"
+mentions that project, and now embed a Google Maps view (built from
+latitude/longitude if set, otherwise the unit's location text — no API
+key needed). A static side-by-side mockup of this layout (not wired to
+the backend) lives in `public/re-preview/` if you want to compare.
 
-Team, tasks/reminders, and the Ina agent panel all work the same way
-they do for Sales — those are shared across every module, not
+Leads, brokers, and inventory units also carry a few extra profile
+fields beyond the original spreadsheet columns — nationality (leads),
+license number + joined date (brokers), and bedrooms/bathrooms/
+possession date/amenities/description/lat-long (inventory) — editable
+from the same Add/Edit modals and shown on each detail page.
+
+The Ina agent log on the Real Estate dashboard is a floating widget
+(bottom-right corner, like a chat bubble) rather than a fixed panel —
+click it to expand the automation feed, click again or the ✕ to
+collapse it. It only appears while the Real Estate dashboard is the
+active view.
+
+Team, tasks/reminders, and (on Sales) the Ina agent panel all work the
+same way they do for Sales — those are shared across every module, not
 Sales-specific.
 
 ### Seed the demo Real Estate CRM account

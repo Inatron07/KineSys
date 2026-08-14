@@ -157,6 +157,19 @@ CREATE TABLE IF NOT EXISTS re_accounting (
   created_at   timestamptz NOT NULL DEFAULT now()
 );
 
+-- Extra business detail fields, added after the first Real Estate CRM
+-- pass so every lead/broker/unit has a fuller profile.
+ALTER TABLE re_leads ADD COLUMN IF NOT EXISTS nationality text;
+ALTER TABLE re_brokers ADD COLUMN IF NOT EXISTS license_no text;
+ALTER TABLE re_brokers ADD COLUMN IF NOT EXISTS joined_at date;
+ALTER TABLE re_inventory ADD COLUMN IF NOT EXISTS bedrooms integer;
+ALTER TABLE re_inventory ADD COLUMN IF NOT EXISTS bathrooms integer;
+ALTER TABLE re_inventory ADD COLUMN IF NOT EXISTS possession_date date;
+ALTER TABLE re_inventory ADD COLUMN IF NOT EXISTS amenities text;
+ALTER TABLE re_inventory ADD COLUMN IF NOT EXISTS description text;
+ALTER TABLE re_inventory ADD COLUMN IF NOT EXISTS latitude numeric;
+ALTER TABLE re_inventory ADD COLUMN IF NOT EXISTS longitude numeric;
+
 CREATE INDEX IF NOT EXISTS idx_re_leads_account ON re_leads(account_id);
 CREATE INDEX IF NOT EXISTS idx_re_brokers_account ON re_brokers(account_id);
 CREATE INDEX IF NOT EXISTS idx_re_inventory_account ON re_inventory(account_id);
