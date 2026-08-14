@@ -824,6 +824,13 @@
     var viewerIsPrimary = !!data.viewerIsPrimary;
     var isRealEstate = data.moduleKind === 'real_estate';
 
+    // Real Estate CRM gets a light theme; everything else (Sales, the
+    // topbar, modals, buttons) stays exactly as-is — re-light only
+    // overrides CSS variables, it doesn't change any component.
+    document.body.classList.toggle('re-light', isRealEstate);
+    var topbarLogo = document.getElementById('topbarLogo');
+    if (topbarLogo) topbarLogo.src = isRealEstate ? 'logo-light.svg' : 'logo.svg';
+
     // Which sidebar tabs apply depends on the account's module — Home/
     // Leads-Kanban is Sales-only, Dashboard/Leads/Brokers/Inventory/
     // Accounting is Real Estate-only. Team is shared by every module.

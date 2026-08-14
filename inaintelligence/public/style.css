@@ -9,6 +9,38 @@ body{
   background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;
   min-height:100vh;overflow-x:hidden;
 }
+
+/* ---- light mode (Real Estate CRM only) ----
+   Every component below already reads colors from these custom
+   properties, so overriding them here re-skins the whole module without
+   touching a single class or piece of markup — same buttons, same
+   cards, same everything, just a light palette. --cyan/--violet/--grad
+   are left untouched on purpose so gradient buttons (.btn-primary,
+   .action-btn.primary) render pixel-identical to the dark theme. Only
+   the handful of rules that use --cyan/--mint as flat TEXT on a light
+   surface (unreadable otherwise) get a readable override below. */
+body.re-light{
+  --bg:#eef1f7;--surface:#ffffff;--surface2:#f3f5fb;--border:#dbe1ee;
+  --text:#101a30;--muted:#4a5570;--faint:#838ea5;
+}
+body.re-light .grid-overlay,body.re-light .blob{display:none;}
+body.re-light .link-btn{color:#0f6fb0;}
+body.re-light .link-btn:hover{color:#5b3fc0;}
+body.re-light .side-nav-item.active{color:#0f6fb0;}
+body.re-light .status-Contacted{color:#0f6fb0;}
+body.re-light .view-toggle-btn.active{color:#0f6fb0;}
+body.re-light .metric-card .value.mint,
+body.re-light .kanban-column-value,
+body.re-light .kanban-card .lead-value,
+body.re-light .status-Converted,
+body.re-light .status-Closed,
+body.re-light .status-Available,
+body.re-light .status-Received,
+body.re-light .status-Active{color:#0e8f5f;}
+body.re-light .activity-item,
+body.re-light .task-pill,
+body.re-light .banner,
+body.re-light .ina-bubble{color:#3a445e;}
 a{color:inherit;text-decoration:none;}
 .wrap{max-width:1100px;margin:0 auto;padding:28px 24px 60px;position:relative;z-index:1;}
 
