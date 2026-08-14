@@ -587,6 +587,57 @@
     });
   }
 
+  // ---- Real Estate CRM: monthly broker report ----
+  var monthlyReportLoaded = false;
+
+  function loadMonthlyReport() {
+    if (!accountId) return;
+    document.getElementById('reportsBody').innerHTML = '<tr><td colspan="10" class="empty-note"><span class="spinner"></span> Loading...</td></tr>';
+    fetch('/api/accounts/' + accountId + '/re/monthly-report')
+      .then(function (res) { return res.json(); })
+      .then(function (data) { renderMonthlyReport(data); monthlyReportLoaded = true; })
+      .catch(function () { document.getElementById('reportsBody').innerHTML = '<tr><td colspan="10" class="empty-note">Could not load the report — try again.</td></tr>'; });
+  }
+
+  function renderMonthlyReport(data) {
+    document.getElementById('reportsMonthLabel').textContent = data.monthLabel || '';
+    var t = data.totals || {};
+    document.getElementById('reportsSummaryCards').innerHTML =
+      metricCard('Total target', reMoney(t.target)) +
+      metricCard('Total achieved (overall)', reMoney(t.achieved)) +
+      metricCard('Collected this month', reMoney(t.collectionsThisMonth), 'mint') +
+      metricCard('Deals closed this month', t.dealsThisMonth || 0) +
+      metricCard('New leads this month', t.newLeadsThisMonth || 0) +
+      metricCard('Top performer', data.topBrokerName || '—');
+
+    var brokers = data.brokers || [];
+    document.getElementById('reportsBody').innerHTML = brokers.map(function (b) {
+      var pct = Math.round((b.achievedPct || 0) * 100);
+      var convPct = Math.round((b.conversionRate || 0) * 100);
+      return '<tr>' +
+        '<td><a href="#" data-open-broker-report="' + b.brokerId + '" style="color:var(--text);font-weight:600;">' + b.name + '</a>' +
+        '<div style="font-size:10.5px;color:var(--faint);margin-top:2px;">' + (b.status || '') + '</div></td>' +
+        '<td>' + (b.zone || '—') + '</td>' +
+        '<td>' + reMoney(b.target) + '</td>' +
+        '<td>' + reMoney(b.achieved) + '<div style="font-size:10.5px;color:var(--faint);margin-top:2px;">' + pct + '% of target</div></td>' +
+        '<td style="color:var(--mint);font-weight:600;">' + reMoney(b.collectionsThisMonth) + '</td>' +
+        '<td>' + (b.dealsThisMonth || 0) + '</td>' +
+        '<td>' + (b.newLeadsThisMonth || 0) + (b.closedThisMonth ? ' <span style="color:var(--faint);">(' + b.closedThisMonth + ' closed)</span>' : '') + '</td>' +
+        '<td>' + (b.activeLeads || 0) + '</td>' +
+        '<td>' + (b.closedDeals || 0) + '</td>' +
+        '<td>' + convPct + '%</td>' +
+        '</tr>';
+    }).join('') || '<tr><td colspan="10" class="empty-note">No brokers yet — add one from the Brokers tab.</td></tr>';
+
+    document.querySelectorAll('[data-open-broker-report]').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        e.preventDefault();
+        switchView('brokers');
+        openReBrokerDetail(a.getAttribute('data-open-broker-report'));
+      });
+    });
+  }
+
   // ---- Real Estate CRM: add/edit modals ----
   var RE_LEAD_STATUSES = ['New', 'Contacted', 'Site Visit', 'Negotiation', 'Closed', 'Lost'];
   var RE_INVENTORY_STATUSES = ['Available', 'Reserved', 'Negotiation', 'Sold'];
@@ -626,6 +677,39 @@
   }
 
   document.getElementById('reAddLeadBtn').addEventListener('click', function () { openReLeadModal(null); });
+
+  document.getElementById('reUploadLeadsBtn').addEventListener('click', function () {
+    document.getElementById('reUploadLeadsInput').click();
+  });
+  document.getElementById('reUploadLeadsInput').addEventListener('change', function () {
+    var input = this;
+    var file = input.files[0];
+    if (!file) return;
+    var btn = document.getElementById('reUploadLeadsBtn');
+    var original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Uploading...';
+    var fd = new FormData();
+    fd.append('file', file);
+    fetch('/api/accounts/' + accountId + '/re/leads/upload', { method: 'POST', body: fd })
+      .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, d: d }; }); })
+      .then(function (r) {
+        btn.disabled = false;
+        btn.innerHTML = original;
+        input.value = '';
+        if (!r.ok) { showToast(r.d.error || 'Upload failed.'); return; }
+        var msg = r.d.added + (r.d.added === 1 ? ' lead' : ' leads') + ' imported from ' + file.name + '.' +
+          (r.d.skipped ? ' ' + r.d.skipped + ' row(s) skipped.' : '');
+        showToast(msg);
+        loadAccount();
+      })
+      .catch(function () {
+        btn.disabled = false;
+        btn.innerHTML = original;
+        input.value = '';
+        showToast('Upload failed — check your connection and try again.');
+      });
+  });
   document.getElementById('reLeadClose').addEventListener('click', function () { reLeadModal.classList.remove('show'); });
   reLeadModal.addEventListener('click', function (e) { if (e.target === reLeadModal) reLeadModal.classList.remove('show'); });
   document.getElementById('reLeadSave').addEventListener('click', function () {
@@ -1315,6 +1399,9 @@
       else if (activeDetail.type === 'broker') openReBrokerDetail(activeDetail.id);
       else if (activeDetail.type === 'inventory') openReInventoryDetail(activeDetail.id);
     }
+
+    var reportsSection = document.getElementById('viewReports');
+    if (reportsSection && reportsSection.classList.contains('active')) loadMonthlyReport();
   }
 
   fetch('/api/me').then(function (res) {
@@ -1354,6 +1441,7 @@
       section.classList.toggle('active', section.id === 'view' + view.charAt(0).toUpperCase() + view.slice(1));
     });
     updateInaFloatVisibility(view === 'dashboard');
+    if (view === 'reports') loadMonthlyReport();
   }
 
   document.querySelectorAll('.side-nav-item').forEach(function (item) {

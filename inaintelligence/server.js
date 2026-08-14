@@ -5,10 +5,13 @@ const path = require('path');
 const express = require('express');
 const session = require('express-session');
 const pgSession = require('connect-pg-simple')(session);
+const multer = require('multer');
+const XLSX = require('xlsx');
 const db = require('./data/db');
 
 const app = express();
 const PORT = process.env.PORT || 4100;
+const leadUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 app.use(express.json());
 app.use(session({
@@ -289,6 +292,65 @@ app.post('/api/accounts/:id/re/accounting/:txnId', requireAuth, asyncRoute(async
   const result = await db.updateREAccounting(req.params.id, req.params.txnId, req.body || {}, actorNameFor(req.session.auth));
   if (result.error) return res.status(400).json({ error: result.error });
   res.json({ ok: true });
+}));
+
+// Bulk lead import from an uploaded .xlsx/.xls/.csv file. Accepts a
+// loosely-matched header row (case/spacing insensitive) so a real
+// export from another CRM or a manually-built sheet both work.
+function pickCell(row, keys) {
+  const normalized = {};
+  Object.keys(row).forEach((k) => { normalized[String(k).trim().toLowerCase()] = row[k]; });
+  for (const k of keys) {
+    if (normalized[k] !== undefined && normalized[k] !== '') return normalized[k];
+  }
+  return '';
+}
+function toDateStr(v) {
+  if (!v) return null;
+  if (v instanceof Date && !isNaN(v.getTime())) return v.toISOString().slice(0, 10);
+  const s = String(v).trim();
+  return s || null;
+}
+
+app.post('/api/accounts/:id/re/leads/upload', requireAuth, leadUpload.single('file'), asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
+
+  let workbook;
+  try {
+    workbook = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
+  } catch (err) {
+    return res.status(400).json({ error: 'Could not read that file — make sure it is a valid .xlsx, .xls, or .csv file.' });
+  }
+  const sheetName = workbook.SheetNames[0];
+  if (!sheetName) return res.status(400).json({ error: 'That file has no sheets.' });
+  const raw = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+  if (!raw.length) return res.status(400).json({ error: 'That sheet looks empty.' });
+  if (raw.length > 1000) return res.status(400).json({ error: 'That file has too many rows — split it into batches of 1000 or fewer.' });
+
+  const rows = raw.map((r) => ({
+    name: pickCell(r, ['name', 'lead name', 'full name']),
+    phone: pickCell(r, ['phone', 'phone number', 'mobile', 'contact number']),
+    email: pickCell(r, ['email', 'email address']),
+    source: pickCell(r, ['source', 'lead source']),
+    propertyInterest: pickCell(r, ['property interest', 'property', 'interest']),
+    budget: pickCell(r, ['budget', 'budget (inr)', 'budget (rs)']),
+    status: pickCell(r, ['status', 'stage']),
+    broker: pickCell(r, ['broker', 'assigned broker', 'broker name', 'owner']),
+    dateReceived: toDateStr(pickCell(r, ['date received', 'date', 'received on'])),
+    nextFollowup: toDateStr(pickCell(r, ['next follow-up', 'next followup', 'follow up date', 'next follow up'])),
+    nationality: pickCell(r, ['nationality']),
+    remarks: pickCell(r, ['remarks', 'notes', 'comments'])
+  }));
+
+  const result = await db.bulkAddRELeads(req.params.id, rows, actorNameFor(req.session.auth));
+  res.json(result);
+}));
+
+app.get('/api/accounts/:id/re/monthly-report', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const report = await db.getREMonthlyReport(req.params.id);
+  res.json(report);
 }));
 
 // ---------- team management ----------

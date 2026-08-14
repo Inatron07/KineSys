@@ -689,6 +689,43 @@ async function getRELeadActivity(accountId, leadId) {
   return rows.map((r) => ({ text: r.text, actor: r.actor_name, at: new Date(r.at).getTime() }));
 }
 
+// Bulk-imports leads parsed from an uploaded Excel/CSV file. `rows` is an
+// array of plain objects already normalized by the server route (name,
+// phone, email, source, propertyInterest, budget, status, broker,
+// dateReceived, nextFollowup, nationality, remarks). Matches `broker` by
+// name (case-insensitive) against this account's existing brokers.
+async function bulkAddRELeads(accountId, rows, actorName) {
+  const { rows: brokerRows } = await pool.query('SELECT id, name FROM re_brokers WHERE account_id=$1', [accountId]);
+  const brokerByName = {};
+  brokerRows.forEach((b) => { brokerByName[String(b.name).trim().toLowerCase()] = b.id; });
+
+  let added = 0;
+  const errors = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i] || {};
+    const name = String(r.name || '').trim();
+    if (!name) { errors.push(`Row ${i + 2}: missing a name, skipped.`); continue; }
+    const brokerKey = String(r.broker || '').trim().toLowerCase();
+    const brokerId = brokerKey ? (brokerByName[brokerKey] || null) : null;
+    const status = RE_LEAD_STATUSES.includes(r.status) ? r.status : 'New';
+    const leadId = id('re_lead');
+    await pool.query(
+      `INSERT INTO re_leads (id, account_id, name, phone, email, source, property_interest, budget, status, broker_id, date_received, next_followup, remarks, nationality)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, COALESCE($11::date, CURRENT_DATE), $12, $13, $14)`,
+      [leadId, accountId, name, r.phone || null, r.email || null, r.source || 'Excel import', r.propertyInterest || null,
+       Number(r.budget) || 0, status, brokerId, r.dateReceived || null, r.nextFollowup || null, r.remarks || null, r.nationality || null]
+    );
+    added++;
+  }
+  if (added > 0) {
+    await pool.query(
+      'INSERT INTO activity (id, account_id, text, actor_name) VALUES ($1,$2,$3,$4)',
+      [id('act'), accountId, `${actorName || 'Someone'} imported ${added} lead${added === 1 ? '' : 's'} from an Excel file.`, actorName || null]
+    );
+  }
+  return { ok: true, added, skipped: rows.length - added, errors };
+}
+
 async function getREBrokerActivity(accountId, brokerId) {
   const { rows } = await pool.query(
     'SELECT text, actor_name, at FROM activity WHERE account_id=$1 AND re_broker_id=$2 ORDER BY at DESC LIMIT 100',
@@ -817,6 +854,56 @@ async function updateREAccounting(accountId, txnId, { txnDate, clientName, prope
   return { ok: true };
 }
 
+// Manager-facing, one-screen rollup: for every broker, target vs. total
+// achieved plus what happened *this calendar month* specifically — new
+// leads assigned, collections received, deals closed. Built from data
+// already on re_leads/re_brokers/re_accounting, no extra schema needed.
+async function getREMonthlyReport(accountId) {
+  const { rows: brokers } = await pool.query('SELECT * FROM re_brokers WHERE account_id=$1 ORDER BY name', [accountId]);
+  const { rows: leads } = await pool.query('SELECT id, broker_id, status, created_at FROM re_leads WHERE account_id=$1', [accountId]);
+  const { rows: txns } = await pool.query(
+    `SELECT broker_name, amount, status, txn_date FROM re_accounting
+     WHERE account_id=$1 AND txn_date IS NOT NULL AND date_trunc('month', txn_date) = date_trunc('month', CURRENT_DATE)`,
+    [accountId]
+  );
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const monthLabel = now.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+
+  const report = brokers.map((b) => {
+    const leadsThisMonth = leads.filter((l) => l.broker_id === b.id && new Date(l.created_at).getTime() >= monthStart);
+    const closedThisMonth = leadsThisMonth.filter((l) => l.status === 'Closed').length;
+    const brokerTxns = txns.filter((t) => t.broker_name && t.broker_name.trim().toLowerCase() === String(b.name).trim().toLowerCase());
+    const collectionsThisMonth = brokerTxns.filter((t) => t.status === 'Received').reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const dealsThisMonth = brokerTxns.length;
+    const target = Number(b.sales_target) || 0;
+    const achieved = Number(b.revenue_achieved) || 0;
+    const activeLeads = Number(b.active_leads) || 0;
+    const closedDeals = Number(b.closed_deals) || 0;
+    const conversionRate = (activeLeads + closedDeals) > 0 ? closedDeals / (activeLeads + closedDeals) : 0;
+    return {
+      brokerId: b.id, name: b.name, zone: b.zone, status: b.status,
+      target, achieved, achievedPct: target > 0 ? achieved / target : 0,
+      newLeadsThisMonth: leadsThisMonth.length, closedThisMonth,
+      collectionsThisMonth, dealsThisMonth,
+      activeLeads, closedDeals, conversionRate
+    };
+  });
+
+  const totals = report.reduce((acc, r) => ({
+    target: acc.target + r.target,
+    achieved: acc.achieved + r.achieved,
+    newLeadsThisMonth: acc.newLeadsThisMonth + r.newLeadsThisMonth,
+    collectionsThisMonth: acc.collectionsThisMonth + r.collectionsThisMonth,
+    dealsThisMonth: acc.dealsThisMonth + r.dealsThisMonth
+  }), { target: 0, achieved: 0, newLeadsThisMonth: 0, collectionsThisMonth: 0, dealsThisMonth: 0 });
+
+  const topBroker = report.slice().sort((a, b) => b.collectionsThisMonth - a.collectionsThisMonth)[0] || null;
+
+  return { monthLabel, brokers: report, totals, topBrokerName: topBroker && topBroker.collectionsThisMonth > 0 ? topBroker.name : null };
+}
+
 // ---------- tasks & reminders (primary admin -> teammates) ----------
 async function assignTask(accountId, { assigneeId, title, kind, dueAt }, createdByName) {
   if (!assigneeId || !title) return { error: 'Pick a teammate and a title.' };
@@ -908,5 +995,6 @@ module.exports = {
   addLead, updateLeadStatus, updateLead, getLeadActivity, assignTask, completeTask,
   addRELead, updateRELead, addREBroker, updateREBroker, addREInventory, updateREInventory, addREAccounting, updateREAccounting,
   addRELeadNote, getRELeadActivity, getREBrokerActivity, getREInventoryActivity,
+  bulkAddRELeads, getREMonthlyReport,
   createAccount, MODULE_PRESETS, LICENSE_TERMS
 };

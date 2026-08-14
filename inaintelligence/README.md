@@ -179,6 +179,31 @@ Team, tasks/reminders, and (on Sales) the Ina agent panel all work the
 same way they do for Sales — those are shared across every module, not
 Sales-specific.
 
+### Monthly Reports
+
+A sidebar tab (after Team, Real Estate accounts only) gives a manager
+a single-screen scorecard — one row per broker with target vs. total
+achieved, this calendar month's collections (from `re_accounting`,
+matched by broker name), deals closed this month, new leads assigned
+this month, current active/closed-deal counts, and a conversion rate.
+Summary cards above the table roll all of that up account-wide, plus
+call out the top performer by this month's collections. It's all
+computed live from existing tables (`db.getREMonthlyReport`) — no new
+schema needed.
+
+### Bulk lead import from Excel
+
+The Leads tab has an "Upload Excel" button next to "+ Add lead" that
+accepts a `.xlsx`/`.xls`/`.csv` file (parsed server-side with the
+`xlsx` package) and bulk-creates leads, matching a "Broker" column
+against existing brokers by name (case-insensitive; unmatched or blank
+broker names are left unassigned). Header matching is loose — "Name",
+"Phone", "Property Interest", "Next Follow-up", etc. all match with
+different casing/spacing. A "Sample file" download link next to it
+serves `public/downloads/leads-upload-sample.xlsx`, a ready-made
+15-lead example (matching the seeded demo brokers) you can download
+and re-upload to demo the whole round trip.
+
 ### Seed the demo Real Estate CRM account
 
 A ready-to-use account, pre-loaded with the exact dummy data from the
