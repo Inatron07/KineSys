@@ -18,7 +18,19 @@ app.use(session({
   saveUninitialized: false,
   cookie: { maxAge: 1000 * 60 * 60 * 8 }
 }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filePath) => {
+    // Login/admin/super-admin pages must never be served from the browser's
+    // back/forward cache or disk cache — otherwise hitting Back or refresh
+    // after logout can show a stale, still-"logged in" page without the
+    // session-check script re-running.
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  }
+}));
 
 function requireAuth(req, res, next) {
   if (!req.session.auth) return res.status(401).json({ error: 'Not logged in.' });

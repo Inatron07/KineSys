@@ -1,6 +1,13 @@
 (function () {
   'use strict';
 
+  // If this page is restored from the browser's back/forward cache (e.g.
+  // hitting Back after logging out), force a real reload so the /api/me
+  // check below runs again instead of showing the stale cached view.
+  window.addEventListener('pageshow', function (event) {
+    if (event.persisted) window.location.reload();
+  });
+
   var params = new URLSearchParams(window.location.search);
   var me = null;
   var accountId = null;
