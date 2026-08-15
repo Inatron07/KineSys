@@ -58,6 +58,130 @@ const AUTOMATION_LOG = [
   { trigger: 'No follow-up in 48 hrs (LD-1001)', action: 'Reminder sent to Karan Mehta + escalation flagged', system: 'Follow-up Watcher' }
 ];
 
+// ---------- Broker lead top-up ----------
+// The BROKERS array above states each broker's activeLeads/closedDeals as a
+// target (e.g. Karan Mehta: 28 active, 4 closed) — those numbers need to be
+// backed by real re_leads rows, or the broker detail page shows a stat box
+// that says "28 active leads" next to a list with only 2 leads in it. This
+// section tops up whatever's missing with realistic, varied lead records,
+// and is safe to re-run: it checks each broker's actual current counts and
+// only inserts the shortfall, so running it twice never double-inserts.
+const FIRST_NAMES = ['Aarav', 'Vivaan', 'Aditya', 'Vihaan', 'Arjun', 'Reyansh', 'Krishna', 'Ishaan', 'Rohan', 'Kabir',
+  'Ananya', 'Diya', 'Saanvi', 'Aadhya', 'Kiara', 'Myra', 'Anika', 'Navya', 'Riya', 'Sara',
+  'Aryan', 'Dhruv', 'Yash', 'Karthik', 'Nikhil', 'Rahul', 'Sanjay', 'Varun', 'Aman', 'Siddharth',
+  'Pooja', 'Neha', 'Priya', 'Shreya', 'Kavya', 'Meera', 'Divya', 'Anjali', 'Sneha', 'Isha',
+  'Rajesh', 'Suresh', 'Manoj', 'Vikas', 'Ashok', 'Deepak', 'Ramesh', 'Sunil', 'Prakash', 'Anil',
+  'Emma', 'James', 'Lena', 'David', 'Fatima', 'Zara', 'Omar', 'Sofia', 'Noah', 'Chloe'];
+const LAST_NAMES = ['Sharma', 'Verma', 'Gupta', 'Mehta', 'Kapoor', 'Malhotra', 'Chopra', 'Reddy', 'Rao', 'Nair',
+  'Iyer', 'Menon', 'Pillai', 'Krishnan', 'Bhat', 'Kulkarni', 'Patil', 'Deshmukh', 'Joshi', 'Shah',
+  'Agarwal', 'Bansal', 'Chatterjee', 'Banerjee', 'Mukherjee', 'Das', 'Sinha', 'Roy', 'Ghosh', 'Sen',
+  'Thakur', 'Chauhan', 'Rathore', 'Singh', 'Yadav', 'Pandey', 'Mishra', 'Tripathi', 'Dubey', 'Saxena',
+  'Fernandes', 'D\'Souza', 'Pereira', 'Rodrigues', 'Sequeira', 'Carter', 'Muller', 'Whitfield', 'Al-Sayed', 'Ahmed'];
+const NATIONALITIES = ['Indian', 'Indian', 'Indian', 'Indian', 'Indian', 'Indian', 'Indian', 'Indian', 'NRI (UAE)', 'British', 'American', 'German'];
+const EMAIL_DOMAINS = ['gmail.com', 'yahoo.com', 'outlook.com', 'rediffmail.com', 'hotmail.com'];
+const SOURCES = ['99acres', 'MagicBricks', 'Facebook Ads', 'Instagram Ads', 'Google Ads', 'Referral', 'Website Form', 'Walk-in'];
+const PROPERTY_TAGS = {
+  'Skyline Heights': ['1BHK', '2BHK', '3BHK'],
+  'Palm Villas': ['Villa'],
+  'Oceanview Towers': ['2BHK', '3BHK'],
+  'Green Meadows': ['Plot'],
+  'Metro Business Park': ['Office'],
+  'Sunrise Residency': ['2BHK', '3BHK']
+};
+const REMARKS_BY_STATUS = {
+  New: ['Called, no answer', 'Awaiting first response', 'Auto-captured, pending first call', 'Sent WhatsApp intro message'],
+  Contacted: ['Interested, wants brochure', 'Requested more details', 'Discussed budget over call', 'Asked for floor plan'],
+  'Site Visit': ['Site visit scheduled', 'Visited site, liked the layout', 'Second site visit requested', 'Comparing with another project'],
+  Negotiation: ['Negotiating price', 'Close to finalizing', 'Requested payment plan options', 'Waiting on loan approval'],
+  Closed: ['Booking confirmed', 'Deal closed successfully', 'Token amount received, agreement signed', 'Registration completed']
+};
+const ACTIVE_STATUS_WEIGHTS = ['New', 'New', 'Contacted', 'Contacted', 'Site Visit', 'Site Visit', 'Negotiation'];
+
+function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+function pick(arr) { return arr[randInt(0, arr.length - 1)]; }
+function fmtDate(d) { return d.toISOString().slice(0, 10); }
+function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+
+const SEED_WINDOW_START = new Date('2026-06-20T00:00:00Z');
+const SEED_WINDOW_END = new Date('2026-08-15T00:00:00Z');
+
+function randomDateReceived() {
+  const span = Math.floor((SEED_WINDOW_END.getTime() - SEED_WINDOW_START.getTime()) / 86400000);
+  return addDays(SEED_WINDOW_START, randInt(0, span));
+}
+
+function makePhone(used) {
+  let phone;
+  do { phone = '9' + String(randInt(100000000, 999999999)); } while (used.has(phone));
+  used.add(phone);
+  return phone;
+}
+
+function generateLead(broker, status, used) {
+  const first = pick(FIRST_NAMES);
+  const last = pick(LAST_NAMES);
+  const name = first + ' ' + last;
+  const projectName = pick(Object.keys(PROPERTY_TAGS));
+  const tag = pick(PROPERTY_TAGS[projectName]);
+  const dateReceived = randomDateReceived();
+  const hasFollowedUp = status !== 'New';
+  const lastFollowup = hasFollowedUp ? fmtDate(addDays(dateReceived, randInt(1, 4))) : null;
+  const nextFollowup = status === 'Closed' ? null : fmtDate(addDays(dateReceived, randInt(3, 12)));
+  return {
+    name,
+    phone: makePhone(used),
+    email: (first + '.' + last).toLowerCase() + '@' + pick(EMAIL_DOMAINS),
+    source: pick(SOURCES),
+    propertyInterest: projectName + ' (' + tag + ')',
+    budget: randInt(42, 380) * 100000,
+    status,
+    dateReceived: fmtDate(dateReceived),
+    lastFollowup,
+    nextFollowup,
+    nationality: pick(NATIONALITIES),
+    remarks: pick(REMARKS_BY_STATUS[status])
+  };
+}
+
+async function topUpLeads(accountId, brokerIdByName) {
+  console.log('Checking broker lead counts and topping up any shortfall...');
+  const { rows: existingPhones } = await db.pool.query('SELECT phone FROM re_leads WHERE account_id=$1 AND phone IS NOT NULL', [accountId]);
+  const used = new Set(existingPhones.map((r) => r.phone));
+
+  for (const b of BROKERS) {
+    if (!b.activeLeads && !b.closedDeals) continue; // e.g. Arjun Das — inactive, 0/0 target
+    const brokerId = brokerIdByName[b.name];
+    if (!brokerId) continue;
+
+    const { rows } = await db.pool.query(
+      `SELECT
+         count(*) FILTER (WHERE status NOT IN ('Closed','Lost')) AS active_count,
+         count(*) FILTER (WHERE status = 'Closed') AS closed_count
+       FROM re_leads WHERE account_id=$1 AND broker_id=$2`,
+      [accountId, brokerId]
+    );
+    const currentActive = Number(rows[0].active_count) || 0;
+    const currentClosed = Number(rows[0].closed_count) || 0;
+    const needActive = Math.max(0, b.activeLeads - currentActive);
+    const needClosed = Math.max(0, b.closedDeals - currentClosed);
+    if (needActive === 0 && needClosed === 0) continue;
+
+    console.log(`  ${b.name}: has ${currentActive} active / ${currentClosed} closed, target ${b.activeLeads}/${b.closedDeals} — adding ${needActive} active + ${needClosed} closed...`);
+    const toInsert = [];
+    for (let i = 0; i < needActive; i++) toInsert.push(generateLead(b, pick(ACTIVE_STATUS_WEIGHTS), used));
+    for (let i = 0; i < needClosed; i++) toInsert.push(generateLead(b, 'Closed', used));
+
+    for (const l of toInsert) {
+      await db.pool.query(
+        `INSERT INTO re_leads (id, account_id, name, phone, email, source, property_interest, budget, status, broker_id, date_received, last_followup, next_followup, remarks, nationality)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+        [db.id('re_lead'), accountId, l.name, l.phone, l.email, l.source, l.propertyInterest, l.budget, l.status, brokerId, l.dateReceived, l.lastFollowup, l.nextFollowup, l.remarks, l.nationality]
+      );
+    }
+  }
+  console.log('Broker lead top-up complete — every broker\'s active/closed stat is now backed by real leads.');
+}
+
 async function main() {
   console.log('Checking for an existing Real Estate CRM account...');
   let accountId;
@@ -86,59 +210,64 @@ async function main() {
   }
 
   const { rows: existingLeads } = await db.pool.query('SELECT count(*) FROM re_leads WHERE account_id=$1', [accountId]);
-  if (Number(existingLeads[0].count) > 0) {
-    console.log('Dummy data already loaded for this account — nothing more to do.');
-    console.log('Login -> ' + ADMIN_USERNAME + ' / (the password you set)');
-    await db.pool.end();
-    return;
+  const baseDataLoaded = Number(existingLeads[0].count) > 0;
+  let brokerIdByName = {};
+
+  if (baseDataLoaded) {
+    console.log('Base dummy data already loaded for this account — skipping re-insert.');
+    const { rows: brokerRows } = await db.pool.query('SELECT id, name FROM re_brokers WHERE account_id=$1', [accountId]);
+    brokerRows.forEach((r) => { brokerIdByName[r.name] = r.id; });
+  } else {
+    console.log('Loading brokers...');
+    for (const b of BROKERS) {
+      const brokerId = db.id('re_broker');
+      brokerIdByName[b.name] = brokerId;
+      await db.pool.query(
+        `INSERT INTO re_brokers (id, account_id, name, phone, email, zone, active_leads, closed_deals, conversion_pct, commission_pct, sales_target, revenue_achieved, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        [brokerId, accountId, b.name, b.phone, b.email, b.zone, b.activeLeads, b.closedDeals, b.conversionPct, b.commissionPct, b.salesTarget, b.revenueAchieved, b.status]
+      );
+    }
+
+    console.log('Loading leads...');
+    for (const l of LEADS) {
+      await db.pool.query(
+        `INSERT INTO re_leads (id, account_id, name, phone, email, source, property_interest, budget, status, broker_id, date_received, last_followup, next_followup, remarks)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        [db.id('re_lead'), accountId, l.name, l.phone, l.email, l.source, l.propertyInterest, l.budget, l.status, l.broker ? brokerIdByName[l.broker] || null : null, l.dateReceived, l.lastFollowup, l.nextFollowup, l.remarks]
+      );
+    }
+
+    console.log('Loading property inventory...');
+    for (const i of INVENTORY) {
+      await db.pool.query(
+        `INSERT INTO re_inventory (id, account_id, project_name, unit_no, type, area_sqft, price, status, location)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [db.id('re_prop'), accountId, i.projectName, i.unitNo, i.type, i.areaSqft, i.price, i.status, i.location]
+      );
+    }
+
+    console.log('Loading accounting transactions...');
+    for (const t of ACCOUNTING) {
+      await db.pool.query(
+        `INSERT INTO re_accounting (id, account_id, txn_date, client_name, property, amount, type, broker_name, payment_mode, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [db.id('re_txn'), accountId, t.txnDate, t.clientName, t.property, t.amount, t.type, t.broker, t.paymentMode, t.status]
+      );
+    }
+
+    console.log('Loading automation log...');
+    for (const a of AUTOMATION_LOG) {
+      await db.pool.query(
+        'INSERT INTO activity (id, account_id, text, actor_name) VALUES ($1,$2,$3,$4)',
+        [db.id('act'), accountId, a.trigger + ' → ' + a.action + ' (via ' + a.system + ')', null]
+      );
+    }
   }
 
-  console.log('Loading brokers...');
-  const brokerIdByName = {};
-  for (const b of BROKERS) {
-    const brokerId = db.id('re_broker');
-    brokerIdByName[b.name] = brokerId;
-    await db.pool.query(
-      `INSERT INTO re_brokers (id, account_id, name, phone, email, zone, active_leads, closed_deals, conversion_pct, commission_pct, sales_target, revenue_achieved, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-      [brokerId, accountId, b.name, b.phone, b.email, b.zone, b.activeLeads, b.closedDeals, b.conversionPct, b.commissionPct, b.salesTarget, b.revenueAchieved, b.status]
-    );
-  }
-
-  console.log('Loading leads...');
-  for (const l of LEADS) {
-    await db.pool.query(
-      `INSERT INTO re_leads (id, account_id, name, phone, email, source, property_interest, budget, status, broker_id, date_received, last_followup, next_followup, remarks)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-      [db.id('re_lead'), accountId, l.name, l.phone, l.email, l.source, l.propertyInterest, l.budget, l.status, l.broker ? brokerIdByName[l.broker] || null : null, l.dateReceived, l.lastFollowup, l.nextFollowup, l.remarks]
-    );
-  }
-
-  console.log('Loading property inventory...');
-  for (const i of INVENTORY) {
-    await db.pool.query(
-      `INSERT INTO re_inventory (id, account_id, project_name, unit_no, type, area_sqft, price, status, location)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [db.id('re_prop'), accountId, i.projectName, i.unitNo, i.type, i.areaSqft, i.price, i.status, i.location]
-    );
-  }
-
-  console.log('Loading accounting transactions...');
-  for (const t of ACCOUNTING) {
-    await db.pool.query(
-      `INSERT INTO re_accounting (id, account_id, txn_date, client_name, property, amount, type, broker_name, payment_mode, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [db.id('re_txn'), accountId, t.txnDate, t.clientName, t.property, t.amount, t.type, t.broker, t.paymentMode, t.status]
-    );
-  }
-
-  console.log('Loading automation log...');
-  for (const a of AUTOMATION_LOG) {
-    await db.pool.query(
-      'INSERT INTO activity (id, account_id, text, actor_name) VALUES ($1,$2,$3,$4)',
-      [db.id('act'), accountId, a.trigger + ' → ' + a.action + ' (via ' + a.system + ')', null]
-    );
-  }
+  // Always run — idempotent, only inserts whatever shortfall remains between
+  // each broker's stated activeLeads/closedDeals and their real lead count.
+  await topUpLeads(accountId, brokerIdByName);
 
   console.log('Done. Real Estate CRM is seeded and ready.');
   console.log('Login -> ' + ADMIN_USERNAME + ' / (the password you set)');

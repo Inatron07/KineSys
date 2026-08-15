@@ -435,6 +435,19 @@ async function getAccountDetail(accountId) {
     );
     const { rows: inventory } = await pool.query('SELECT * FROM re_inventory WHERE account_id=$1 ORDER BY created_at DESC', [accountId]);
     const { rows: accounting } = await pool.query('SELECT * FROM re_accounting WHERE account_id=$1 ORDER BY txn_date DESC NULLS LAST, created_at DESC', [accountId]);
+    // Active/closed lead counts per broker are always derived live from the
+    // actual re_leads rows (not the static re_brokers.active_leads/closed_deals
+    // columns) so what a broker's stat boxes show always matches what's really
+    // assigned to them on the Leads tab — no separate counter to drift out of sync.
+    const { rows: leadCountRows } = await pool.query(
+      `SELECT broker_id,
+         count(*) FILTER (WHERE status NOT IN ('Closed','Lost')) AS active_count,
+         count(*) FILTER (WHERE status = 'Closed') AS closed_count
+       FROM re_leads WHERE account_id=$1 AND broker_id IS NOT NULL GROUP BY broker_id`,
+      [accountId]
+    );
+    const leadCountsByBroker = {};
+    leadCountRows.forEach((r) => { leadCountsByBroker[r.broker_id] = { active: Number(r.active_count) || 0, closed: Number(r.closed_count) || 0 }; });
     const { rows: dashRows } = await pool.query(
       `SELECT
          (SELECT count(*) FROM re_leads WHERE account_id=$1 AND date_received = CURRENT_DATE) AS new_leads_today,
@@ -459,14 +472,17 @@ async function getAccountDetail(accountId) {
         dateReceived: l.date_received, lastFollowup: l.last_followup, nextFollowup: l.next_followup,
         remarks: l.remarks, createdAt: new Date(l.created_at).getTime()
       })),
-      brokers: brokers.map((b) => ({
-        id: b.id, name: b.name, phone: b.phone, email: b.email, zone: b.zone,
-        activeLeads: b.active_leads, closedDeals: b.closed_deals,
-        conversionPct: Number(b.conversion_pct) || 0, commissionPct: b.commission_pct,
-        salesTarget: Number(b.sales_target) || 0, revenueAchieved: Number(b.revenue_achieved) || 0,
-        status: b.status, achievedPct: b.sales_target > 0 ? Number(b.revenue_achieved) / Number(b.sales_target) : 0,
-        licenseNo: b.license_no, joinedAt: b.joined_at
-      })),
+      brokers: brokers.map((b) => {
+        const counts = leadCountsByBroker[b.id] || { active: 0, closed: 0 };
+        return {
+          id: b.id, name: b.name, phone: b.phone, email: b.email, zone: b.zone,
+          activeLeads: counts.active, closedDeals: counts.closed,
+          conversionPct: Number(b.conversion_pct) || 0, commissionPct: b.commission_pct,
+          salesTarget: Number(b.sales_target) || 0, revenueAchieved: Number(b.revenue_achieved) || 0,
+          status: b.status, achievedPct: b.sales_target > 0 ? Number(b.revenue_achieved) / Number(b.sales_target) : 0,
+          licenseNo: b.license_no, joinedAt: b.joined_at
+        };
+      }),
       inventory: inventory.map((i) => ({
         id: i.id, projectName: i.project_name, unitNo: i.unit_no, type: i.type,
         areaSqft: i.area_sqft, price: Number(i.price) || 0, status: i.status, location: i.location,
@@ -879,8 +895,11 @@ async function getREMonthlyReport(accountId) {
     const dealsThisMonth = brokerTxns.length;
     const target = Number(b.sales_target) || 0;
     const achieved = Number(b.revenue_achieved) || 0;
-    const activeLeads = Number(b.active_leads) || 0;
-    const closedDeals = Number(b.closed_deals) || 0;
+    // Same rule as the broker detail page: active/closed counts come from
+    // actual re_leads rows, not the static re_brokers columns.
+    const brokerAllLeads = leads.filter((l) => l.broker_id === b.id);
+    const activeLeads = brokerAllLeads.filter((l) => l.status !== 'Closed' && l.status !== 'Lost').length;
+    const closedDeals = brokerAllLeads.filter((l) => l.status === 'Closed').length;
     const conversionRate = (activeLeads + closedDeals) > 0 ? closedDeals / (activeLeads + closedDeals) : 0;
     return {
       brokerId: b.id, name: b.name, zone: b.zone, status: b.status,

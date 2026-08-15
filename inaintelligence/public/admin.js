@@ -41,6 +41,119 @@
     return new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
+  // ---- Generic table toolbar: search + filters + row selection ----
+  // Every table (Leads, Brokers, Inventory, Accounting, Team) plugs into
+  // this the same way: keep a small state object (search text, filter
+  // values, selected-id set) keyed by table name, apply it client-side
+  // against whatever's already in currentData, and re-render just that
+  // table's markup — no re-fetch needed.
+  var SEARCH_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>';
+  var tt = {}; // name -> { search, filters:{}, selected:Set }
+  var ttRenderFns = {}; // name -> function to call to re-render that table
+  var ttVisibleIds = {}; // name -> function returning the currently-visible row ids (for select-all)
+
+  function ttState(name) {
+    if (!tt[name]) tt[name] = { search: '', filters: {}, selected: new Set() };
+    return tt[name];
+  }
+
+  function ttSearchMatch(state, row, fields) {
+    if (!state.search) return true;
+    var q = state.search.toLowerCase();
+    return fields.some(function (f) {
+      var v = row[f];
+      return v !== null && v !== undefined && String(v).toLowerCase().indexOf(q) !== -1;
+    });
+  }
+
+  // matchers: { filterKey: function(row, filterValue) -> boolean }
+  function ttFilterMatch(state, row, matchers) {
+    for (var key in matchers) {
+      var val = state.filters[key];
+      if (val === undefined || val === null || val === '') continue;
+      if (!matchers[key](row, val)) return false;
+    }
+    return true;
+  }
+
+  function ttApply(name, rows, searchFields, matchers) {
+    var state = ttState(name);
+    return rows.filter(function (r) { return ttSearchMatch(state, r, searchFields) && ttFilterMatch(state, r, matchers); });
+  }
+
+  function ttToolbarActive(name) {
+    var state = ttState(name);
+    if (state.search) return true;
+    for (var k in state.filters) { if (state.filters[k] !== undefined && state.filters[k] !== null && state.filters[k] !== '') return true; }
+    return false;
+  }
+
+  function ttSelectionBarHTML(name, itemLabel) {
+    var n = ttState(name).selected.size;
+    if (!n) return '';
+    return '<div class="tt-selection-bar show"><span>' + n + ' ' + itemLabel + (n === 1 ? '' : 's') + ' selected</span>' +
+      '<button class="tt-reset" type="button" data-tt-clear="' + name + '">Clear selection</button></div>';
+  }
+
+  function ttHeaderCheckboxHTML(name) {
+    var state = ttState(name);
+    var ids = ttVisibleIds[name] ? ttVisibleIds[name]() : [];
+    var allSelected = ids.length > 0 && ids.every(function (id) { return state.selected.has(id); });
+    var someSelected = !allSelected && ids.some(function (id) { return state.selected.has(id); });
+    return '<input type="checkbox" class="tt-checkbox" data-tt-select-all="' + name + '"' + (allSelected ? ' checked' : '') + (someSelected ? ' data-tt-indeterminate="1"' : '') + '>';
+  }
+
+  function ttRowCheckboxHTML(name, id) {
+    return '<input type="checkbox" class="tt-checkbox" data-tt-select="' + name + '" data-tt-id="' + id + '"' + (ttState(name).selected.has(id) ? ' checked' : '') + '>';
+  }
+
+  function ttApplyIndeterminate() {
+    document.querySelectorAll('[data-tt-indeterminate="1"]').forEach(function (el) { el.indeterminate = true; });
+  }
+
+  function ttRerender(name) { if (ttRenderFns[name]) ttRenderFns[name](); }
+
+  // Search inputs / filter selects / range inputs all share this: update
+  // the matching state field and re-render. `field` is either "search" or
+  // a dotted "filters.key".
+  function ttBindControl(el, name, field) {
+    if (!el) return;
+    el.addEventListener('input', function () {
+      var state = ttState(name);
+      if (field === 'search') state.search = el.value;
+      else state.filters[field] = el.value;
+      ttRerender(name);
+    });
+    if (el.tagName === 'SELECT') {
+      el.addEventListener('change', function () {
+        ttState(name).filters[field] = el.value;
+        ttRerender(name);
+      });
+    }
+  }
+
+  document.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.matches && t.matches('[data-tt-select]')) {
+      var name = t.getAttribute('data-tt-select');
+      var id = t.getAttribute('data-tt-id');
+      var state = ttState(name);
+      if (t.checked) state.selected.add(id); else state.selected.delete(id);
+      ttRerender(name);
+    } else if (t.matches && t.matches('[data-tt-select-all]')) {
+      var name2 = t.getAttribute('data-tt-select-all');
+      var state2 = ttState(name2);
+      var ids = ttVisibleIds[name2] ? ttVisibleIds[name2]() : [];
+      if (t.checked) ids.forEach(function (id) { state2.selected.add(id); });
+      else ids.forEach(function (id) { state2.selected.delete(id); });
+      ttRerender(name2);
+    }
+  });
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest && e.target.closest('[data-tt-clear]');
+    if (t) { ttState(t.getAttribute('data-tt-clear')).selected.clear(); ttRerender(t.getAttribute('data-tt-clear')); }
+  });
+
   function loadAccount() {
     fetch('/api/accounts/' + accountId).then(function (res) {
       if (res.status === 401) { window.location.href = '/login.html'; throw new Error('redirect'); }
@@ -501,66 +614,11 @@
 
     renderReCharts(data);
 
-    document.getElementById('reLeadsSub').textContent = data.leads.length + ' total';
-    document.getElementById('reLeadsBody').innerHTML = data.leads.map(function (l) {
-      return '<tr><td><a href="#" class="link-btn" data-open-lead="' + l.id + '" style="color:var(--text);font-weight:600;">' + l.name + '</a></td><td>' + (l.propertyInterest || '—') + '</td>' +
-        '<td>' + (l.broker || '<span style="color:var(--warn);">Unassigned</span>') + '</td>' +
-        '<td><span class="status-pill ' + reStatusClass(l.status) + '">' + l.status + '</span></td>' +
-        '<td>' + (l.nextFollowup || '—') + '</td>' +
-        '<td style="text-align:right;"><button class="icon-btn" title="Edit lead" data-re-edit-lead="' + l.id + '">' + PENCIL_ICON + '</button></td></tr>';
-    }).join('') || '<tr><td colspan="6" class="empty-note">No leads yet.</td></tr>';
-    document.querySelectorAll('[data-re-edit-lead]').forEach(function (btn) {
-      btn.addEventListener('click', function () { openReLeadModal(btn.getAttribute('data-re-edit-lead')); });
-    });
-    document.querySelectorAll('[data-open-lead]').forEach(function (a) {
-      a.addEventListener('click', function (e) { e.preventDefault(); openReLeadDetail(a.getAttribute('data-open-lead')); });
-    });
-
-    document.getElementById('reBrokersSub').textContent = data.brokers.length + (data.brokers.length === 1 ? ' broker' : ' brokers');
-    document.getElementById('reBrokersList').innerHTML = data.brokers.map(function (b) {
-      var pct = Math.round((b.achievedPct || 0) * 100);
-      var fillClass = pct === 0 ? 'zero' : pct < 50 ? 'low' : '';
-      return '<div class="re-broker-card">' +
-        '<div class="row"><span class="name"><a href="#" data-open-broker="' + b.id + '" style="color:var(--text);">' + b.name + '</a></span>' +
-        '<span class="meta" style="display:flex;align-items:center;gap:8px;">' + (b.zone || '') + ' <span class="status-pill ' + reStatusClass(b.status) + '">' + b.status + '</span> <button class="icon-btn" title="Edit broker" data-re-edit-broker="' + b.id + '">' + PENCIL_ICON + '</button></span></div>' +
-        '<p class="target">Active leads: ' + (b.activeLeads || 0) + ' · Closed deals: ' + (b.closedDeals || 0) + ' · Target ' + reMoney(b.salesTarget) + ' · Achieved ' + reMoney(b.revenueAchieved) + '</p>' +
-        '<div class="re-progress-track"><div class="re-progress-fill ' + fillClass + '" style="width:' + Math.min(pct, 100) + '%;"></div></div>' +
-        '<p class="re-progress-pct">' + pct + '% of target</p>' +
-        '</div>';
-    }).join('') || '<div class="empty-note">No brokers yet.</div>';
-    document.querySelectorAll('[data-re-edit-broker]').forEach(function (btn) {
-      btn.addEventListener('click', function () { openReBrokerModal(btn.getAttribute('data-re-edit-broker')); });
-    });
-    document.querySelectorAll('[data-open-broker]').forEach(function (a) {
-      a.addEventListener('click', function (e) { e.preventDefault(); openReBrokerDetail(a.getAttribute('data-open-broker')); });
-    });
-
-    document.getElementById('reInventorySub').textContent = data.inventory.length + (data.inventory.length === 1 ? ' unit' : ' units');
-    document.getElementById('reInventoryBody').innerHTML = data.inventory.map(function (i) {
-      return '<tr><td><a href="#" class="link-btn" data-open-inv="' + i.id + '" style="color:var(--text);font-weight:600;">' + i.projectName + (i.unitNo ? ' ' + i.unitNo : '') + '</a></td><td>' + (i.type || '—') + '</td>' +
-        '<td>' + (i.areaSqft ? Number(i.areaSqft).toLocaleString() + ' sqft' : '—') + '</td>' +
-        '<td>' + reMoney(i.price) + '</td>' +
-        '<td><span class="status-pill ' + reStatusClass(i.status) + '">' + i.status + '</span></td>' +
-        '<td>' + (i.location || '—') + '</td>' +
-        '<td style="text-align:right;"><button class="icon-btn" title="Edit unit" data-re-edit-inv="' + i.id + '">' + PENCIL_ICON + '</button></td></tr>';
-    }).join('') || '<tr><td colspan="7" class="empty-note">No inventory yet.</td></tr>';
-    document.querySelectorAll('[data-re-edit-inv]').forEach(function (btn) {
-      btn.addEventListener('click', function () { openReInventoryModal(btn.getAttribute('data-re-edit-inv')); });
-    });
-    document.querySelectorAll('[data-open-inv]').forEach(function (a) {
-      a.addEventListener('click', function (e) { e.preventDefault(); openReInventoryDetail(a.getAttribute('data-open-inv')); });
-    });
-
-    document.getElementById('reAccountingSub').textContent = data.accounting.length + (data.accounting.length === 1 ? ' transaction' : ' transactions');
-    document.getElementById('reAccountingBody').innerHTML = data.accounting.map(function (t) {
-      return '<tr><td>' + (t.clientName || '—') + '</td><td>' + (t.property || '—') + '</td><td>' + (t.type || '—') + '</td>' +
-        '<td>' + reMoney(t.amount) + '</td><td>' + (t.brokerName || '—') + '</td><td>' + (t.paymentMode || '—') + '</td>' +
-        '<td><span class="status-pill ' + reStatusClass(t.status) + '">' + t.status + '</span></td>' +
-        '<td style="text-align:right;"><button class="icon-btn" title="Edit transaction" data-re-edit-txn="' + t.id + '">' + PENCIL_ICON + '</button></td></tr>';
-    }).join('') || '<tr><td colspan="8" class="empty-note">No transactions yet.</td></tr>';
-    document.querySelectorAll('[data-re-edit-txn]').forEach(function (btn) {
-      btn.addEventListener('click', function () { openReAccountingModal(btn.getAttribute('data-re-edit-txn')); });
-    });
+    populateReFilterOptions(data);
+    renderLeadsTable();
+    renderBrokersList();
+    renderInventoryTable();
+    renderAccountingTable();
 
     document.querySelectorAll('[data-re-action]').forEach(function (btn) {
       btn.addEventListener('click', function () {
@@ -587,16 +645,333 @@
     });
   }
 
+  // ---- Real Estate CRM: table toolbar plumbing (options, filters, renders) ----
+  function uniqueSorted(arr) {
+    var seen = {}; var out = [];
+    (arr || []).forEach(function (v) { if (v && !seen[v]) { seen[v] = true; out.push(v); } });
+    return out.sort();
+  }
+
+  function fillFilterOptionsPairs(selId, pairs) {
+    var el = document.getElementById(selId);
+    if (!el || !el.options.length) return;
+    var current = el.value;
+    var firstOption = el.options[0].outerHTML;
+    el.innerHTML = firstOption + pairs.map(function (p) { return '<option value="' + p.value + '">' + p.label + '</option>'; }).join('');
+    el.value = pairs.some(function (p) { return p.value === current; }) ? current : '';
+  }
+
+  function fillFilterOptionsPlain(selId, values) {
+    fillFilterOptionsPairs(selId, values.map(function (v) { return { value: v, label: v }; }));
+  }
+
+  function populateReFilterOptions(data) {
+    fillFilterOptionsPlain('reLeadsFilterStatus', RE_LEAD_STATUSES);
+    fillFilterOptionsPairs('reLeadsFilterBroker', (data.brokers || []).map(function (b) { return { value: b.id, label: b.name }; }));
+    fillFilterOptionsPlain('reLeadsFilterSource', uniqueSorted(data.leads.map(function (l) { return l.source; })));
+
+    fillFilterOptionsPlain('reBrokersFilterStatus', RE_BROKER_STATUSES);
+    fillFilterOptionsPlain('reBrokersFilterZone', uniqueSorted(data.brokers.map(function (b) { return b.zone; })));
+
+    fillFilterOptionsPlain('reInventoryFilterStatus', RE_INVENTORY_STATUSES);
+    fillFilterOptionsPlain('reInventoryFilterType', uniqueSorted(data.inventory.map(function (i) { return i.type; })));
+
+    fillFilterOptionsPlain('reAccountingFilterStatus', RE_ACCOUNTING_STATUSES);
+    fillFilterOptionsPlain('reAccountingFilterType', uniqueSorted(data.accounting.map(function (t) { return t.type; })));
+    fillFilterOptionsPlain('reAccountingFilterMode', uniqueSorted(data.accounting.map(function (t) { return t.paymentMode; })));
+
+    fillFilterOptionsPlain('reportsFilterZone', uniqueSorted(data.brokers.map(function (b) { return b.zone; })));
+    fillFilterOptionsPlain('reportsFilterStatus', RE_BROKER_STATUSES);
+  }
+
+  // -- leads table --
+  function reLeadsFiltered() {
+    if (!currentData) return [];
+    return ttApply('reLeads', currentData.leads, ['name', 'phone', 'email', 'propertyInterest'], {
+      status: function (l, v) { return l.status === v; },
+      broker: function (l, v) { return l.brokerId === v; },
+      source: function (l, v) { return l.source === v; },
+      budgetMin: function (l, v) { return (l.budget || 0) >= Number(v); },
+      budgetMax: function (l, v) { return (l.budget || 0) <= Number(v); },
+      dateFrom: function (l, v) { return !!l.dateReceived && l.dateReceived >= v; },
+      dateTo: function (l, v) { return !!l.dateReceived && l.dateReceived <= v; }
+    });
+  }
+  ttVisibleIds.reLeads = function () { return reLeadsFiltered().map(function (l) { return l.id; }); };
+
+  function renderLeadsTable() {
+    if (!currentData) return;
+    var filtered = reLeadsFiltered();
+    var active = ttToolbarActive('reLeads');
+    document.getElementById('reLeadsSub').textContent = filtered.length + (active ? ' of ' + currentData.leads.length : '') + (filtered.length === 1 ? ' lead' : ' leads');
+    document.getElementById('reLeadsSelectionBar').innerHTML = ttSelectionBarHTML('reLeads', 'lead');
+    document.getElementById('reLeadsHeaderCheck').innerHTML = ttHeaderCheckboxHTML('reLeads');
+    document.getElementById('reLeadsBody').innerHTML = filtered.map(function (l) {
+      return '<tr><td class="tt-check-col">' + ttRowCheckboxHTML('reLeads', l.id) + '</td>' +
+        '<td><a href="#" class="link-btn" data-open-lead="' + l.id + '" style="color:var(--text);font-weight:600;">' + l.name + '</a></td><td>' + (l.propertyInterest || '—') + '</td>' +
+        '<td>' + (l.broker || '<span style="color:var(--warn);">Unassigned</span>') + '</td>' +
+        '<td><span class="status-pill ' + reStatusClass(l.status) + '">' + l.status + '</span></td>' +
+        '<td>' + (l.nextFollowup || '—') + '</td>' +
+        '<td style="text-align:right;"><button class="icon-btn" title="Edit lead" data-re-edit-lead="' + l.id + '">' + PENCIL_ICON + '</button></td></tr>';
+    }).join('') || '<tr><td colspan="7" class="empty-note">' + (active ? 'No leads match your search/filters.' : 'No leads yet.') + '</td></tr>';
+    document.querySelectorAll('[data-re-edit-lead]').forEach(function (btn) {
+      btn.addEventListener('click', function () { openReLeadModal(btn.getAttribute('data-re-edit-lead')); });
+    });
+    document.querySelectorAll('[data-open-lead]').forEach(function (a) {
+      a.addEventListener('click', function (e) { e.preventDefault(); openReLeadDetail(a.getAttribute('data-open-lead')); });
+    });
+    ttApplyIndeterminate();
+  }
+  ttRenderFns.reLeads = renderLeadsTable;
+
+  // -- brokers list --
+  function reBrokersFiltered() {
+    if (!currentData) return [];
+    return ttApply('reBrokers', currentData.brokers, ['name', 'zone'], {
+      status: function (b, v) { return b.status === v; },
+      zone: function (b, v) { return b.zone === v; }
+    });
+  }
+  ttVisibleIds.reBrokers = function () { return reBrokersFiltered().map(function (b) { return b.id; }); };
+
+  function renderBrokersList() {
+    if (!currentData) return;
+    var filtered = reBrokersFiltered();
+    var active = ttToolbarActive('reBrokers');
+    document.getElementById('reBrokersSub').textContent = filtered.length + (active ? ' of ' + currentData.brokers.length : '') + (filtered.length === 1 ? ' broker' : ' brokers');
+    document.getElementById('reBrokersSelectionBar').innerHTML = ttSelectionBarHTML('reBrokers', 'broker');
+    document.getElementById('reBrokersList').innerHTML = filtered.map(function (b) {
+      var pct = Math.round((b.achievedPct || 0) * 100);
+      var fillClass = pct === 0 ? 'zero' : pct < 50 ? 'low' : '';
+      return '<div class="re-broker-card has-select">' + ttRowCheckboxHTML('reBrokers', b.id) +
+        '<div class="row"><span class="name"><a href="#" data-open-broker="' + b.id + '" style="color:var(--text);">' + b.name + '</a></span>' +
+        '<span class="meta" style="display:flex;align-items:center;gap:8px;">' + (b.zone || '') + ' <span class="status-pill ' + reStatusClass(b.status) + '">' + b.status + '</span> <button class="icon-btn" title="Edit broker" data-re-edit-broker="' + b.id + '">' + PENCIL_ICON + '</button></span></div>' +
+        '<p class="target">Active leads: ' + (b.activeLeads || 0) + ' · Closed deals: ' + (b.closedDeals || 0) + ' · Target ' + reMoney(b.salesTarget) + ' · Achieved ' + reMoney(b.revenueAchieved) + '</p>' +
+        '<div class="re-progress-track"><div class="re-progress-fill ' + fillClass + '" style="width:' + Math.min(pct, 100) + '%;"></div></div>' +
+        '<p class="re-progress-pct">' + pct + '% of target</p>' +
+        '</div>';
+    }).join('') || '<div class="empty-note">' + (active ? 'No brokers match your search/filters.' : 'No brokers yet.') + '</div>';
+    document.querySelectorAll('[data-re-edit-broker]').forEach(function (btn) {
+      btn.addEventListener('click', function () { openReBrokerModal(btn.getAttribute('data-re-edit-broker')); });
+    });
+    document.querySelectorAll('[data-open-broker]').forEach(function (a) {
+      a.addEventListener('click', function (e) { e.preventDefault(); openReBrokerDetail(a.getAttribute('data-open-broker')); });
+    });
+    var headerCb = document.getElementById('reBrokersHeaderCheck');
+    if (headerCb) {
+      var ids = ttVisibleIds.reBrokers();
+      var state = ttState('reBrokers');
+      var allSel = ids.length > 0 && ids.every(function (id) { return state.selected.has(id); });
+      headerCb.checked = allSel;
+      headerCb.indeterminate = !allSel && ids.some(function (id) { return state.selected.has(id); });
+    }
+    ttApplyIndeterminate();
+  }
+  ttRenderFns.reBrokers = renderBrokersList;
+
+  // -- inventory table --
+  function reInventoryFiltered() {
+    if (!currentData) return [];
+    return ttApply('reInventory', currentData.inventory, ['projectName', 'unitNo', 'location'], {
+      status: function (i, v) { return i.status === v; },
+      type: function (i, v) { return i.type === v; },
+      priceMin: function (i, v) { return (i.price || 0) >= Number(v); },
+      priceMax: function (i, v) { return (i.price || 0) <= Number(v); },
+      areaMin: function (i, v) { return (i.areaSqft || 0) >= Number(v); },
+      areaMax: function (i, v) { return (i.areaSqft || 0) <= Number(v); }
+    });
+  }
+  ttVisibleIds.reInventory = function () { return reInventoryFiltered().map(function (i) { return i.id; }); };
+
+  function renderInventoryTable() {
+    if (!currentData) return;
+    var filtered = reInventoryFiltered();
+    var active = ttToolbarActive('reInventory');
+    document.getElementById('reInventorySub').textContent = filtered.length + (active ? ' of ' + currentData.inventory.length : '') + (filtered.length === 1 ? ' unit' : ' units');
+    document.getElementById('reInventorySelectionBar').innerHTML = ttSelectionBarHTML('reInventory', 'unit');
+    document.getElementById('reInventoryHeaderCheck').innerHTML = ttHeaderCheckboxHTML('reInventory');
+    document.getElementById('reInventoryBody').innerHTML = filtered.map(function (i) {
+      return '<tr><td class="tt-check-col">' + ttRowCheckboxHTML('reInventory', i.id) + '</td>' +
+        '<td><a href="#" class="link-btn" data-open-inv="' + i.id + '" style="color:var(--text);font-weight:600;">' + i.projectName + (i.unitNo ? ' ' + i.unitNo : '') + '</a></td><td>' + (i.type || '—') + '</td>' +
+        '<td>' + (i.areaSqft ? Number(i.areaSqft).toLocaleString() + ' sqft' : '—') + '</td>' +
+        '<td>' + reMoney(i.price) + '</td>' +
+        '<td><span class="status-pill ' + reStatusClass(i.status) + '">' + i.status + '</span></td>' +
+        '<td>' + (i.location || '—') + '</td>' +
+        '<td style="text-align:right;"><button class="icon-btn" title="Edit unit" data-re-edit-inv="' + i.id + '">' + PENCIL_ICON + '</button></td></tr>';
+    }).join('') || '<tr><td colspan="8" class="empty-note">' + (active ? 'No units match your search/filters.' : 'No inventory yet.') + '</td></tr>';
+    document.querySelectorAll('[data-re-edit-inv]').forEach(function (btn) {
+      btn.addEventListener('click', function () { openReInventoryModal(btn.getAttribute('data-re-edit-inv')); });
+    });
+    document.querySelectorAll('[data-open-inv]').forEach(function (a) {
+      a.addEventListener('click', function (e) { e.preventDefault(); openReInventoryDetail(a.getAttribute('data-open-inv')); });
+    });
+    ttApplyIndeterminate();
+  }
+  ttRenderFns.reInventory = renderInventoryTable;
+
+  // -- accounting table --
+  function reAccountingFiltered() {
+    if (!currentData) return [];
+    return ttApply('reAccounting', currentData.accounting, ['clientName', 'property', 'brokerName'], {
+      status: function (t, v) { return t.status === v; },
+      type: function (t, v) { return t.type === v; },
+      mode: function (t, v) { return t.paymentMode === v; },
+      amountMin: function (t, v) { return (t.amount || 0) >= Number(v); },
+      amountMax: function (t, v) { return (t.amount || 0) <= Number(v); },
+      dateFrom: function (t, v) { return !!t.date && t.date >= v; },
+      dateTo: function (t, v) { return !!t.date && t.date <= v; }
+    });
+  }
+  ttVisibleIds.reAccounting = function () { return reAccountingFiltered().map(function (t) { return t.id; }); };
+
+  function renderAccountingTable() {
+    if (!currentData) return;
+    var filtered = reAccountingFiltered();
+    var active = ttToolbarActive('reAccounting');
+    document.getElementById('reAccountingSub').textContent = filtered.length + (active ? ' of ' + currentData.accounting.length : '') + (filtered.length === 1 ? ' transaction' : ' transactions');
+    document.getElementById('reAccountingSelectionBar').innerHTML = ttSelectionBarHTML('reAccounting', 'transaction');
+    document.getElementById('reAccountingHeaderCheck').innerHTML = ttHeaderCheckboxHTML('reAccounting');
+    document.getElementById('reAccountingBody').innerHTML = filtered.map(function (t) {
+      return '<tr><td class="tt-check-col">' + ttRowCheckboxHTML('reAccounting', t.id) + '</td>' +
+        '<td>' + (t.clientName || '—') + '</td><td>' + (t.property || '—') + '</td><td>' + (t.type || '—') + '</td>' +
+        '<td>' + reMoney(t.amount) + '</td><td>' + (t.brokerName || '—') + '</td><td>' + (t.paymentMode || '—') + '</td>' +
+        '<td><span class="status-pill ' + reStatusClass(t.status) + '">' + t.status + '</span></td>' +
+        '<td style="text-align:right;"><button class="icon-btn" title="Edit transaction" data-re-edit-txn="' + t.id + '">' + PENCIL_ICON + '</button></td></tr>';
+    }).join('') || '<tr><td colspan="9" class="empty-note">' + (active ? 'No transactions match your search/filters.' : 'No transactions yet.') + '</td></tr>';
+    document.querySelectorAll('[data-re-edit-txn]').forEach(function (btn) {
+      btn.addEventListener('click', function () { openReAccountingModal(btn.getAttribute('data-re-edit-txn')); });
+    });
+    ttApplyIndeterminate();
+  }
+  ttRenderFns.reAccounting = renderAccountingTable;
+
+  // -- team table (shared by Sales and Real Estate) --
+  function reTeamFiltered() {
+    if (!currentData || !currentData.team) return [];
+    return ttApply('team', currentData.team, ['name', 'username'], {
+      role: function (m, v) { return (m.role || 'User') === v; }
+    });
+  }
+  ttVisibleIds.team = function () { return reTeamFiltered().map(function (m) { return m.id; }); };
+
+  function renderTeamTable() {
+    if (!currentData || !currentData.team) return;
+    var isSuperAdminViewer = currentData.viewerRole === 'super_admin';
+    var filtered = reTeamFiltered();
+    var active = ttToolbarActive('team');
+    document.getElementById('teamSub').textContent = filtered.length + (active ? ' of ' + currentData.team.length : '') + (isSuperAdminViewer ? ' users' : ' / 3 users');
+    document.getElementById('teamSelectionBar').innerHTML = ttSelectionBarHTML('team', 'user');
+    document.getElementById('teamHeaderCheck').innerHTML = ttHeaderCheckboxHTML('team');
+    document.getElementById('teamList').innerHTML = filtered.map(function (m) {
+      return '<tr><td class="tt-check-col">' + ttRowCheckboxHTML('team', m.id) + '</td>' +
+        '<td><div style="display:flex;align-items:center;gap:10px;">' +
+          '<span class="avatar-circle" style="background:' + avatarColor(m.name) + ';">' + initials(m.name) + '</span>' +
+          '<span>' + m.name + '<span class="role-tag role-tag-' + roleSlug(m.role) + '">' + (m.role || 'Sales Rep') + '</span></span>' +
+        '</div></td>' +
+        '<td style="color:var(--faint);">' + m.username + '</td>' +
+        '<td style="text-align:right;"><button class="link-btn" data-view-user="' + m.id + '">View →</button></td>' +
+      '</tr>';
+    }).join('') || '<tr><td colspan="4" class="empty-note">' + (active ? 'No teammates match your search/filters.' : 'No teammates yet.') + '</td></tr>';
+    document.querySelectorAll('[data-view-user]').forEach(function (btn) {
+      btn.addEventListener('click', function () { openUserDetail(btn.getAttribute('data-view-user')); });
+    });
+    ttApplyIndeterminate();
+  }
+  ttRenderFns.team = renderTeamTable;
+
+  // -- toolbar control binding (once — element ids are static in the DOM) --
+  function ttBindSearch(elId, name) {
+    var el = document.getElementById(elId);
+    if (!el) return;
+    el.addEventListener('input', function () { ttState(name).search = el.value; ttRerender(name); });
+  }
+  function ttBindFilter(elId, name, key) {
+    var el = document.getElementById(elId);
+    if (!el) return;
+    var evt = el.tagName === 'SELECT' ? 'change' : 'input';
+    el.addEventListener(evt, function () { ttState(name).filters[key] = el.value; ttRerender(name); });
+  }
+  function ttBindReset(elId, name, fieldIds) {
+    var el = document.getElementById(elId);
+    if (!el) return;
+    el.addEventListener('click', function () {
+      var state = ttState(name);
+      state.search = ''; state.filters = {};
+      fieldIds.forEach(function (id) { var f = document.getElementById(id); if (f) f.value = ''; });
+      ttRerender(name);
+    });
+  }
+
+  function bindReTableToolbars() {
+    ttBindSearch('reLeadsSearch', 'reLeads');
+    ttBindFilter('reLeadsFilterStatus', 'reLeads', 'status');
+    ttBindFilter('reLeadsFilterBroker', 'reLeads', 'broker');
+    ttBindFilter('reLeadsFilterSource', 'reLeads', 'source');
+    ttBindFilter('reLeadsFilterBudgetMin', 'reLeads', 'budgetMin');
+    ttBindFilter('reLeadsFilterBudgetMax', 'reLeads', 'budgetMax');
+    ttBindFilter('reLeadsFilterDateFrom', 'reLeads', 'dateFrom');
+    ttBindFilter('reLeadsFilterDateTo', 'reLeads', 'dateTo');
+    ttBindReset('reLeadsFilterReset', 'reLeads', ['reLeadsSearch', 'reLeadsFilterStatus', 'reLeadsFilterBroker', 'reLeadsFilterSource', 'reLeadsFilterBudgetMin', 'reLeadsFilterBudgetMax', 'reLeadsFilterDateFrom', 'reLeadsFilterDateTo']);
+
+    ttBindSearch('reBrokersSearch', 'reBrokers');
+    ttBindFilter('reBrokersFilterStatus', 'reBrokers', 'status');
+    ttBindFilter('reBrokersFilterZone', 'reBrokers', 'zone');
+    ttBindReset('reBrokersFilterReset', 'reBrokers', ['reBrokersSearch', 'reBrokersFilterStatus', 'reBrokersFilterZone']);
+
+    ttBindSearch('reInventorySearch', 'reInventory');
+    ttBindFilter('reInventoryFilterStatus', 'reInventory', 'status');
+    ttBindFilter('reInventoryFilterType', 'reInventory', 'type');
+    ttBindFilter('reInventoryFilterPriceMin', 'reInventory', 'priceMin');
+    ttBindFilter('reInventoryFilterPriceMax', 'reInventory', 'priceMax');
+    ttBindFilter('reInventoryFilterAreaMin', 'reInventory', 'areaMin');
+    ttBindFilter('reInventoryFilterAreaMax', 'reInventory', 'areaMax');
+    ttBindReset('reInventoryFilterReset', 'reInventory', ['reInventorySearch', 'reInventoryFilterStatus', 'reInventoryFilterType', 'reInventoryFilterPriceMin', 'reInventoryFilterPriceMax', 'reInventoryFilterAreaMin', 'reInventoryFilterAreaMax']);
+
+    ttBindSearch('reAccountingSearch', 'reAccounting');
+    ttBindFilter('reAccountingFilterStatus', 'reAccounting', 'status');
+    ttBindFilter('reAccountingFilterType', 'reAccounting', 'type');
+    ttBindFilter('reAccountingFilterMode', 'reAccounting', 'mode');
+    ttBindFilter('reAccountingFilterAmountMin', 'reAccounting', 'amountMin');
+    ttBindFilter('reAccountingFilterAmountMax', 'reAccounting', 'amountMax');
+    ttBindFilter('reAccountingFilterDateFrom', 'reAccounting', 'dateFrom');
+    ttBindFilter('reAccountingFilterDateTo', 'reAccounting', 'dateTo');
+    ttBindReset('reAccountingFilterReset', 'reAccounting', ['reAccountingSearch', 'reAccountingFilterStatus', 'reAccountingFilterType', 'reAccountingFilterMode', 'reAccountingFilterAmountMin', 'reAccountingFilterAmountMax', 'reAccountingFilterDateFrom', 'reAccountingFilterDateTo']);
+
+    ttBindSearch('teamSearch', 'team');
+    ttBindFilter('teamFilterRole', 'team', 'role');
+    ttBindReset('teamFilterReset', 'team', ['teamSearch', 'teamFilterRole']);
+
+    ttBindSearch('reportsSearch', 'reports');
+    ttBindFilter('reportsFilterZone', 'reports', 'zone');
+    ttBindFilter('reportsFilterStatus', 'reports', 'status');
+    ttBindReset('reportsFilterReset', 'reports', ['reportsSearch', 'reportsFilterZone', 'reportsFilterStatus']);
+  }
+  bindReTableToolbars();
+
   // ---- Real Estate CRM: monthly broker report ----
   var monthlyReportLoaded = false;
+  var lastMonthlyReportData = null;
 
   function loadMonthlyReport() {
     if (!accountId) return;
     document.getElementById('reportsBody').innerHTML = '<tr><td colspan="10" class="empty-note"><span class="spinner"></span> Loading...</td></tr>';
     fetch('/api/accounts/' + accountId + '/re/monthly-report')
       .then(function (res) { return res.json(); })
-      .then(function (data) { renderMonthlyReport(data); monthlyReportLoaded = true; })
+      .then(function (data) {
+        lastMonthlyReportData = data;
+        fillFilterOptionsPlain('reportsFilterZone', uniqueSorted((data.brokers || []).map(function (b) { return b.zone; })));
+        renderMonthlyReport(data);
+        monthlyReportLoaded = true;
+      })
       .catch(function () { document.getElementById('reportsBody').innerHTML = '<tr><td colspan="10" class="empty-note">Could not load the report — try again.</td></tr>'; });
+  }
+
+  function reportsFiltered() {
+    if (!lastMonthlyReportData) return [];
+    return ttApply('reports', lastMonthlyReportData.brokers || [], ['name'], {
+      zone: function (b, v) { return b.zone === v; },
+      status: function (b, v) { return b.status === v; }
+    });
   }
 
   function renderMonthlyReport(data) {
@@ -610,7 +985,13 @@
       metricCard('New leads this month', t.newLeadsThisMonth || 0) +
       metricCard('Top performer', data.topBrokerName || '—');
 
-    var brokers = data.brokers || [];
+    renderMonthlyReportTable();
+  }
+
+  function renderMonthlyReportTable() {
+    if (!lastMonthlyReportData) return;
+    var brokers = reportsFiltered();
+    var active = ttToolbarActive('reports');
     document.getElementById('reportsBody').innerHTML = brokers.map(function (b) {
       var pct = Math.round((b.achievedPct || 0) * 100);
       var convPct = Math.round((b.conversionRate || 0) * 100);
@@ -627,7 +1008,7 @@
         '<td>' + (b.closedDeals || 0) + '</td>' +
         '<td>' + convPct + '%</td>' +
         '</tr>';
-    }).join('') || '<tr><td colspan="10" class="empty-note">No brokers yet — add one from the Brokers tab.</td></tr>';
+    }).join('') || '<tr><td colspan="10" class="empty-note">' + (active ? 'No brokers match your search/filters.' : 'No brokers yet — add one from the Brokers tab.') + '</td></tr>';
 
     document.querySelectorAll('[data-open-broker-report]').forEach(function (a) {
       a.addEventListener('click', function (e) {
@@ -637,6 +1018,7 @@
       });
     });
   }
+  ttRenderFns.reports = renderMonthlyReportTable;
 
   // ---- Real Estate CRM: add/edit modals ----
   var RE_LEAD_STATUSES = ['New', 'Contacted', 'Site Visit', 'Negotiation', 'Closed', 'Lost'];
@@ -1126,10 +1508,14 @@
       });
   });
 
+  var rbdLeadFilter = null; // null | 'active' | 'closed' — which bucket the stat-box buttons are filtering "Assigned leads" to
+
   function openReBrokerDetail(brokerId) {
     if (!currentData) return;
     var b = currentData.brokers.filter(function (x) { return x.id === brokerId; })[0];
     if (!b) return;
+    var isNewBroker = !activeDetail || activeDetail.type !== 'broker' || activeDetail.id !== brokerId;
+    if (isNewBroker) rbdLeadFilter = null;
     activeDetail = { type: 'broker', id: brokerId };
 
     document.getElementById('rbdPageTitle').textContent = b.name;
@@ -1153,14 +1539,23 @@
     document.getElementById('rbdProgressFill').style.width = Math.min(pct, 100) + '%';
     document.getElementById('rbdProgressPct').textContent = pct + '% of target';
 
-    var assigned = currentData.leads.filter(function (l) { return l.brokerId === brokerId; });
-    document.getElementById('rbdLeadsSub').textContent = assigned.length + (assigned.length === 1 ? ' lead' : ' leads');
+    var allAssigned = currentData.leads.filter(function (l) { return l.brokerId === brokerId; });
+    var assigned = allAssigned;
+    if (rbdLeadFilter === 'active') assigned = allAssigned.filter(function (l) { return l.status !== 'Closed' && l.status !== 'Lost'; });
+    else if (rbdLeadFilter === 'closed') assigned = allAssigned.filter(function (l) { return l.status === 'Closed'; });
+
+    document.getElementById('rbdActiveLeadsBtn').classList.toggle('active', rbdLeadFilter === 'active');
+    document.getElementById('rbdClosedDealsBtn').classList.toggle('active', rbdLeadFilter === 'closed');
+    document.getElementById('rbdLeadsFilterReset').style.display = rbdLeadFilter ? '' : 'none';
+    document.getElementById('rbdLeadsSub').textContent = rbdLeadFilter
+      ? assigned.length + ' of ' + allAssigned.length + (allAssigned.length === 1 ? ' lead' : ' leads') + ' · ' + (rbdLeadFilter === 'active' ? 'active' : 'closed')
+      : allAssigned.length + (allAssigned.length === 1 ? ' lead' : ' leads');
     document.getElementById('rbdLeadsList').innerHTML = assigned.map(function (l) {
       return '<div class="mini-lead-row"><div><a href="#" data-open-lead="' + l.id + '" style="font-weight:600;color:var(--text);">' + l.name + '</a>' +
         '<div class="meta">' + (l.propertyInterest || 'No property noted') + '</div></div>' +
         '<span style="display:flex;align-items:center;gap:10px;"><span class="status-pill ' + reStatusClass(l.status) + '">' + l.status + '</span>' +
         '<button class="link-btn danger" data-unassign-lead="' + l.id + '">Remove</button></span></div>';
-    }).join('') || '<div class="empty-note">No leads assigned to this broker yet.</div>';
+    }).join('') || '<div class="empty-note">' + (rbdLeadFilter ? 'No ' + rbdLeadFilter + ' leads for this broker.' : 'No leads assigned to this broker yet.') + '</div>';
     bindOpenLeadLinks('rbdLeadsList');
     document.querySelectorAll('#rbdLeadsList [data-unassign-lead]').forEach(function (btn) {
       btn.addEventListener('click', function () {
@@ -1197,6 +1592,20 @@
       showToast('Lead assigned.');
       loadAccount();
     });
+  });
+  document.getElementById('rbdActiveLeadsBtn').addEventListener('click', function () {
+    if (!activeDetail || activeDetail.type !== 'broker') return;
+    rbdLeadFilter = rbdLeadFilter === 'active' ? null : 'active';
+    openReBrokerDetail(activeDetail.id);
+  });
+  document.getElementById('rbdClosedDealsBtn').addEventListener('click', function () {
+    if (!activeDetail || activeDetail.type !== 'broker') return;
+    rbdLeadFilter = rbdLeadFilter === 'closed' ? null : 'closed';
+    openReBrokerDetail(activeDetail.id);
+  });
+  document.getElementById('rbdLeadsFilterReset').addEventListener('click', function () {
+    rbdLeadFilter = null;
+    if (activeDetail && activeDetail.type === 'broker') openReBrokerDetail(activeDetail.id);
   });
 
   function openReInventoryDetail(itemId) {
@@ -1338,21 +1747,8 @@
     var teamNavItem = document.querySelector('.side-nav-item[data-view="team"]');
     if (teamNavItem) teamNavItem.style.display = viewerIsPrimary ? '' : 'none';
 
-    document.getElementById('teamSub').textContent = data.team.length + (isSuperAdminViewer ? ' users' : ' / 3 users');
-    document.getElementById('teamList').innerHTML = data.team.map(function (m) {
-      return '<tr>' +
-        '<td><div style="display:flex;align-items:center;gap:10px;">' +
-          '<span class="avatar-circle" style="background:' + avatarColor(m.name) + ';">' + initials(m.name) + '</span>' +
-          '<span>' + m.name + '<span class="role-tag role-tag-' + roleSlug(m.role) + '">' + (m.role || 'Sales Rep') + '</span></span>' +
-        '</div></td>' +
-        '<td style="color:var(--faint);">' + m.username + '</td>' +
-        '<td style="text-align:right;"><button class="link-btn" data-view-user="' + m.id + '">View →</button></td>' +
-      '</tr>';
-    }).join('') || '<tr><td colspan="3" class="empty-note">No teammates yet.</td></tr>';
-
-    document.querySelectorAll('[data-view-user]').forEach(function (btn) {
-      btn.addEventListener('click', function () { openUserDetail(btn.getAttribute('data-view-user')); });
-    });
+    fillFilterOptionsPlain('teamFilterRole', ['Admin', 'User']);
+    renderTeamTable();
 
     var newUserBtn = document.getElementById('newUserBtn');
     var capNote = document.getElementById('teamCapNote');

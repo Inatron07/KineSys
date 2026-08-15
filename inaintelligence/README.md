@@ -191,6 +191,36 @@ call out the top performer by this month's collections. It's all
 computed live from existing tables (`db.getREMonthlyReport`) — no new
 schema needed.
 
+### Broker lead counts are always real
+
+A broker's "Active leads" and "Closed deals" numbers (on the Brokers list,
+broker detail page, and Monthly Reports) are computed live from the actual
+`re_leads` rows assigned to them — never from a stored counter that can
+drift out of sync. `npm run seed:realestate` tops up each seeded broker
+with enough generated leads (realistic names/sources/property interest/
+dates spread over the last ~8 weeks) so their stated targets are backed
+by real records; safe to re-run, it only inserts whatever shortfall
+remains. On the broker detail page, the "Active leads" and "Closed deals"
+stat boxes are clickable — they filter the "Assigned leads" list below to
+just that bucket (click again, or "Show all", to reset).
+
+### Search, filter, and multi-select on every table
+
+Leads, Brokers, Inventory, Accounting, Team, and Monthly Reports each have
+a toolbar above the table: a live search box (matches name/phone/email/
+property/etc. as you type) plus dropdown filters relevant to that table
+(status, broker, source, zone, type, payment mode, role...), and for the
+tables with genuinely numeric/date data — Leads, Inventory, Accounting —
+min/max range filters (budget, price, area, amount, date received/
+transaction date). "Reset" clears everything back to the full list.
+Leads, Brokers, Inventory, Accounting, and Team also get SharePoint-style
+row selection: a checkbox per row plus a "select all" checkbox in the
+header that only selects whatever's currently visible (i.e. respects
+active filters), with a "N selected / Clear selection" bar. All of this
+runs client-side against data already on the page — no extra API calls,
+and everything (`admin.js`'s `tt*` helpers) is one small reusable engine
+rather than six one-off implementations.
+
 ### Bulk lead import from Excel
 
 The Leads tab has an "Upload Excel" button next to "+ Add lead" that

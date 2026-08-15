@@ -159,8 +159,18 @@
               <button class="btn btn-secondary" id="reAddLeadBtn" type="button" style="padding:8px 14px;font-size:11.5px;">+ Add lead</button>
             </div>
           </div>
+          <div class="table-toolbar">
+            <div class="tt-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg><input type="text" id="reLeadsSearch" placeholder="Search leads by name, phone, email, property..."></div>
+            <select id="reLeadsFilterStatus"><option value="">All statuses</option></select>
+            <select id="reLeadsFilterBroker"><option value="">All brokers</option></select>
+            <select id="reLeadsFilterSource"><option value="">All sources</option></select>
+            <div class="tt-range">Budget <input type="number" id="reLeadsFilterBudgetMin" placeholder="Min"><span class="tt-range-sep">–</span><input type="number" id="reLeadsFilterBudgetMax" placeholder="Max"></div>
+            <div class="tt-range">Received <input type="date" id="reLeadsFilterDateFrom"><span class="tt-range-sep">–</span><input type="date" id="reLeadsFilterDateTo"></div>
+            <button class="tt-reset" type="button" id="reLeadsFilterReset">Reset</button>
+          </div>
+          <div id="reLeadsSelectionBar"></div>
           <table>
-            <thead><tr><th>Lead</th><th>Property</th><th>Broker</th><th>Status</th><th>Next follow-up</th><th></th></tr></thead>
+            <thead><tr><th class="tt-check-col" id="reLeadsHeaderCheck"></th><th>Lead</th><th>Property</th><th>Broker</th><th>Status</th><th>Next follow-up</th><th></th></tr></thead>
             <tbody id="reLeadsBody"></tbody>
           </table>
         </div>
@@ -175,6 +185,14 @@
             </div>
             <button class="btn btn-secondary" id="reAddBrokerBtn" type="button" style="padding:8px 14px;font-size:11.5px;">+ Add broker</button>
           </div>
+          <div class="table-toolbar">
+            <div class="tt-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg><input type="text" id="reBrokersSearch" placeholder="Search brokers by name, zone..."></div>
+            <select id="reBrokersFilterStatus"><option value="">All statuses</option></select>
+            <select id="reBrokersFilterZone"><option value="">All zones</option></select>
+            <button class="tt-reset" type="button" id="reBrokersFilterReset">Reset</button>
+            <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--faint);margin-left:auto;"><input type="checkbox" class="tt-checkbox" id="reBrokersHeaderCheck" data-tt-select-all="reBrokers">Select all</label>
+          </div>
+          <div id="reBrokersSelectionBar"></div>
           <div id="reBrokersList" style="padding:14px 18px;"></div>
         </div>
       </div>
@@ -188,8 +206,17 @@
             </div>
             <button class="btn btn-secondary" id="reAddInventoryBtn" type="button" style="padding:8px 14px;font-size:11.5px;">+ Add unit</button>
           </div>
+          <div class="table-toolbar">
+            <div class="tt-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg><input type="text" id="reInventorySearch" placeholder="Search by project, unit, location..."></div>
+            <select id="reInventoryFilterStatus"><option value="">All statuses</option></select>
+            <select id="reInventoryFilterType"><option value="">All types</option></select>
+            <div class="tt-range">Price <input type="number" id="reInventoryFilterPriceMin" placeholder="Min"><span class="tt-range-sep">–</span><input type="number" id="reInventoryFilterPriceMax" placeholder="Max"></div>
+            <div class="tt-range">Area <input type="number" id="reInventoryFilterAreaMin" placeholder="Min sqft"><span class="tt-range-sep">–</span><input type="number" id="reInventoryFilterAreaMax" placeholder="Max sqft"></div>
+            <button class="tt-reset" type="button" id="reInventoryFilterReset">Reset</button>
+          </div>
+          <div id="reInventorySelectionBar"></div>
           <table>
-            <thead><tr><th>Project / unit</th><th>Type</th><th>Area</th><th>Price</th><th>Status</th><th>Location</th><th></th></tr></thead>
+            <thead><tr><th class="tt-check-col" id="reInventoryHeaderCheck"></th><th>Project / unit</th><th>Type</th><th>Area</th><th>Price</th><th>Status</th><th>Location</th><th></th></tr></thead>
             <tbody id="reInventoryBody"></tbody>
           </table>
         </div>
@@ -204,8 +231,18 @@
             </div>
             <button class="btn btn-secondary" id="reAddAccountingBtn" type="button" style="padding:8px 14px;font-size:11.5px;">+ Add transaction</button>
           </div>
+          <div class="table-toolbar">
+            <div class="tt-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg><input type="text" id="reAccountingSearch" placeholder="Search by client, property, broker..."></div>
+            <select id="reAccountingFilterStatus"><option value="">All statuses</option></select>
+            <select id="reAccountingFilterType"><option value="">All types</option></select>
+            <select id="reAccountingFilterMode"><option value="">All payment modes</option></select>
+            <div class="tt-range">Amount <input type="number" id="reAccountingFilterAmountMin" placeholder="Min"><span class="tt-range-sep">–</span><input type="number" id="reAccountingFilterAmountMax" placeholder="Max"></div>
+            <div class="tt-range">Date <input type="date" id="reAccountingFilterDateFrom"><span class="tt-range-sep">–</span><input type="date" id="reAccountingFilterDateTo"></div>
+            <button class="tt-reset" type="button" id="reAccountingFilterReset">Reset</button>
+          </div>
+          <div id="reAccountingSelectionBar"></div>
           <table>
-            <thead><tr><th>Client</th><th>Property</th><th>Type</th><th>Amount</th><th>Broker</th><th>Payment mode</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th class="tt-check-col" id="reAccountingHeaderCheck"></th><th>Client</th><th>Property</th><th>Type</th><th>Amount</th><th>Broker</th><th>Payment mode</th><th>Status</th><th></th></tr></thead>
             <tbody id="reAccountingBody"></tbody>
           </table>
         </div>
@@ -220,8 +257,14 @@
             </div>
             <button class="btn btn-secondary" id="newUserBtn" type="button" style="padding:8px 16px;font-size:11.5px;">+ New user</button>
           </div>
+          <div class="table-toolbar">
+            <div class="tt-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg><input type="text" id="teamSearch" placeholder="Search by name, username..."></div>
+            <select id="teamFilterRole"><option value="">All roles</option></select>
+            <button class="tt-reset" type="button" id="teamFilterReset">Reset</button>
+          </div>
+          <div id="teamSelectionBar"></div>
           <table>
-            <thead><tr><th>Name</th><th>Username</th><th></th></tr></thead>
+            <thead><tr><th class="tt-check-col" id="teamHeaderCheck"></th><th>Name</th><th>Username</th><th></th></tr></thead>
             <tbody id="teamList"></tbody>
           </table>
           <div id="teamCapNote"></div>
@@ -244,6 +287,12 @@
               <h3>Broker scorecard</h3>
               <span class="sub">Target vs. achieved, and this month at a glance</span>
             </div>
+          </div>
+          <div class="table-toolbar">
+            <div class="tt-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg><input type="text" id="reportsSearch" placeholder="Search brokers by name..."></div>
+            <select id="reportsFilterZone"><option value="">All zones</option></select>
+            <select id="reportsFilterStatus"><option value="">All statuses</option></select>
+            <button class="tt-reset" type="button" id="reportsFilterReset">Reset</button>
           </div>
           <table>
             <thead>
@@ -325,8 +374,8 @@
             <div class="contact-line" id="rbdPhoneLine"></div>
             <div class="contact-line" id="rbdEmailLine"></div>
             <div class="stat-boxes">
-              <div class="stat-box"><div class="num" id="rbdActiveLeads"></div><div class="lbl">Active leads</div></div>
-              <div class="stat-box"><div class="num" id="rbdClosedDeals"></div><div class="lbl">Closed deals</div></div>
+              <button class="stat-box clickable" type="button" id="rbdActiveLeadsBtn" data-lead-filter="active"><div class="num" id="rbdActiveLeads"></div><div class="lbl">Active leads</div></button>
+              <button class="stat-box clickable" type="button" id="rbdClosedDealsBtn" data-lead-filter="closed"><div class="num" id="rbdClosedDeals"></div><div class="lbl">Closed deals</div></button>
             </div>
             <div class="props-list">
               <h4>Performance</h4>
@@ -342,7 +391,7 @@
           </div>
           <div style="grid-column:2 / span 2;">
             <div class="panel">
-              <div class="panel-head"><h3>Assigned leads</h3><span class="sub" id="rbdLeadsSub"></span></div>
+              <div class="panel-head"><div><h3>Assigned leads</h3><span class="sub" id="rbdLeadsSub"></span></div><button class="link-btn" id="rbdLeadsFilterReset" type="button" style="display:none;">Show all</button></div>
               <div style="display:flex;gap:8px;padding:12px 18px;border-bottom:1px solid var(--border);">
                 <select id="rbdAssignSelect" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:12.5px;font-family:inherit;"></select>
                 <button class="btn btn-secondary" id="rbdAssignBtn" type="button" style="padding:8px 14px;font-size:11.5px;white-space:nowrap;">+ Assign</button>
