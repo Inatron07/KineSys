@@ -274,7 +274,10 @@
                     <span class="sub" id="waChatPhone"></span>
                   </div>
                 </div>
-                <button class="link-btn" type="button" id="waChatSendTemplate">Send template</button>
+                <div style="display:flex;gap:14px;flex-shrink:0;">
+                  <button class="link-btn danger" type="button" id="waChatClearBtn">Clear chat</button>
+                  <button class="link-btn" type="button" id="waChatSendTemplate">Send template</button>
+                </div>
               </div>
               <div id="waChatMessages" style="max-height:420px;overflow-y:auto;padding:14px 18px;"></div>
               <div class="note-form" style="padding:12px 18px 18px;">
@@ -472,7 +475,7 @@
               <div id="rldVisitsList"></div>
             </div>
             <div class="panel" style="margin-bottom:0;">
-              <div class="panel-head"><h3>WhatsApp</h3><button class="link-btn" id="rldSendTemplateBtn" type="button">Send template</button></div>
+              <div class="panel-head"><h3>WhatsApp</h3><div style="display:flex;gap:14px;"><button class="link-btn danger" id="rldWaClearBtn" type="button">Clear chat</button><button class="link-btn" id="rldSendTemplateBtn" type="button">Send template</button></div></div>
               <div id="rldWaMessages" style="max-height:280px;overflow-y:auto;padding:6px 18px;"></div>
               <div class="note-form" style="padding:12px 18px 18px;">
                 <input type="text" id="rldWaInput" placeholder="Reply on WhatsApp (only works within 24h of their last message)">
@@ -791,9 +794,14 @@
       <div class="na-field" style="margin-bottom:14px;"><label for="reInvPossession">Possession date</label><input type="date" id="reInvPossession"></div>
       <div class="na-field" style="margin-bottom:14px;"><label for="reInvAmenities">Amenities</label><input type="text" id="reInvAmenities" placeholder="e.g. Pool, Gym, Clubhouse, Covered parking"></div>
       <div class="na-field" style="margin-bottom:14px;"><label for="reInvDescription">Description</label><input type="text" id="reInvDescription" placeholder="e.g. Corner unit, sea-facing, ready to move"></div>
-      <div class="na-row" style="grid-template-columns:1fr 1fr;margin-bottom:18px;">
+      <div class="na-row" style="grid-template-columns:1fr 1fr;margin-bottom:14px;">
         <div class="na-field"><label for="reInvLat">Latitude (optional)</label><input type="text" id="reInvLat" placeholder="e.g. 19.1197"></div>
         <div class="na-field"><label for="reInvLng">Longitude (optional)</label><input type="text" id="reInvLng" placeholder="e.g. 72.8464"></div>
+      </div>
+      <div class="na-field" style="margin-bottom:18px;">
+        <label for="reInvImages">Photo URLs (one per line)</label>
+        <textarea id="reInvImages" rows="3" placeholder="https://.../photo1.jpg&#10;https://.../photo2.jpg" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-size:13px;font-family:inherit;resize:vertical;"></textarea>
+        <div class="hint-line" style="margin-top:5px;">Public, direct image links (not a Google Drive/Photos share page). Shown to leads and sent by the WhatsApp agent when they ask to see photos.</div>
       </div>
       <button class="btn btn-primary" id="reInventorySave" type="button" style="width:100%;padding:12px;font-size:13px;">Save unit</button>
     </div>

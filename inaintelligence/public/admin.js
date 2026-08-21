@@ -1262,9 +1262,16 @@
   // -- WhatsApp outreach: inline chat window (replaces the conversations
   // list in place, rather than navigating away to the lead detail page) --
   var activeWaChatLeadId = null;
+  var waChatPollTimer = null;
+  var WA_POLL_MS = 4000; // near-real-time without needing websockets — cheap enough at this volume
+
+  function stopWaChatPoll() {
+    if (waChatPollTimer) { clearInterval(waChatPollTimer); waChatPollTimer = null; }
+  }
 
   function openWaChat(leadId) {
     var lead = (currentData && currentData.leads || []).find(function (l) { return l.id === leadId; });
+    stopWaChatPoll();
     activeWaChatLeadId = leadId;
     document.getElementById('waConvosPanel').style.display = 'none';
     document.getElementById('waChatPanel').style.display = '';
@@ -1274,31 +1281,47 @@
     document.getElementById('waChatName').textContent = lead ? lead.name : 'Lead';
     document.getElementById('waChatPhone').textContent = lead ? lead.phone : '';
     document.getElementById('waChatInput').value = '';
+    document.getElementById('waChatMessages').removeAttribute('data-loaded');
     loadWaChatMessages();
+    waChatPollTimer = setInterval(loadWaChatMessages, WA_POLL_MS);
   }
 
   function closeWaChat() {
+    stopWaChatPoll();
     activeWaChatLeadId = null;
     document.getElementById('waChatPanel').style.display = 'none';
     document.getElementById('waConvosPanel').style.display = '';
     fetch('/api/accounts/' + accountId + '/re/whatsapp/conversations').then(function (res) { return res.json(); }).then(renderWaConvos);
   }
 
+  document.getElementById('waChatClearBtn').addEventListener('click', function () {
+    if (!activeWaChatLeadId) return;
+    if (!window.confirm('Clear this WhatsApp thread? This only deletes the copy stored here — nothing changes on WhatsApp itself.')) return;
+    fetch('/api/accounts/' + accountId + '/re/whatsapp/conversations/' + activeWaChatLeadId, { method: 'DELETE' })
+      .then(function (res) { return res.json(); })
+      .then(function () { loadWaChatMessages(); showToast('Chat cleared.'); });
+  });
+
   function loadWaChatMessages() {
     var leadId = activeWaChatLeadId;
     var box = document.getElementById('waChatMessages');
-    box.innerHTML = '<div class="empty-note" style="padding:16px 0;"><span class="spinner"></span></div>';
+    var isFirstLoad = !box.getAttribute('data-loaded');
+    var wasNearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+    if (isFirstLoad) box.innerHTML = '<div class="empty-note" style="padding:16px 0;"><span class="spinner"></span></div>';
     fetch('/api/accounts/' + accountId + '/re/whatsapp/conversations/' + leadId)
       .then(function (res) { return res.json(); })
       .then(function (messages) {
         if (activeWaChatLeadId !== leadId) return;
-        box.innerHTML = messages.map(function (m) {
+        var html = messages.map(function (m) {
           return '<div class="wa-bubble-row ' + m.direction + '"><div class="wa-bubble ' + m.direction + '">' +
             escapeHtmlWa(m.message) + '<div class="when">' + timeAgo(m.at) + '</div></div></div>';
         }).join('') || '<div class="empty-note" style="padding:16px 0;">No WhatsApp messages with this lead yet.</div>';
-        box.scrollTop = box.scrollHeight;
+        if (box.innerHTML === html) return; // nothing new — skip the reflow/scroll reset
+        box.innerHTML = html;
+        box.setAttribute('data-loaded', '1');
+        if (isFirstLoad || wasNearBottom) box.scrollTop = box.scrollHeight;
       })
-      .catch(function () { box.innerHTML = '<div class="empty-note" style="padding:16px 0;">Could not load messages.</div>'; });
+      .catch(function () { if (isFirstLoad) box.innerHTML = '<div class="empty-note" style="padding:16px 0;">Could not load messages.</div>'; });
   }
 
   document.getElementById('waChatBack').addEventListener('click', function (e) { e.preventDefault(); closeWaChat(); });
@@ -1352,21 +1375,45 @@
   });
 
   // -- WhatsApp panel on lead detail page --
+  var rldWaPollTimer = null;
+  var RLD_WA_POLL_MS = 4000;
+
+  function stopRldWaPoll() {
+    if (rldWaPollTimer) { clearInterval(rldWaPollTimer); rldWaPollTimer = null; }
+  }
+
   function loadRldWaMessages(leadId) {
     var box = document.getElementById('rldWaMessages');
-    box.innerHTML = '<div class="empty-note" style="padding:16px 0;"><span class="spinner"></span></div>';
+    var isFirstLoad = !box.getAttribute('data-loaded');
+    var wasNearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+    if (isFirstLoad) box.innerHTML = '<div class="empty-note" style="padding:16px 0;"><span class="spinner"></span></div>';
     fetch('/api/accounts/' + accountId + '/re/whatsapp/conversations/' + leadId)
       .then(function (res) { return res.json(); })
       .then(function (messages) {
         if (!activeDetail || activeDetail.type !== 'lead' || activeDetail.id !== leadId) return;
-        box.innerHTML = messages.map(function (m) {
+        var html = messages.map(function (m) {
           return '<div class="wa-bubble-row ' + m.direction + '"><div class="wa-bubble ' + m.direction + '">' +
             escapeHtmlWa(m.message) + '<div class="when">' + timeAgo(m.at) + '</div></div></div>';
         }).join('') || '<div class="empty-note" style="padding:16px 0;">No WhatsApp messages with this lead yet.</div>';
-        box.scrollTop = box.scrollHeight;
+        if (box.innerHTML === html) return;
+        box.innerHTML = html;
+        box.setAttribute('data-loaded', '1');
+        if (isFirstLoad || wasNearBottom) box.scrollTop = box.scrollHeight;
       })
-      .catch(function () { box.innerHTML = '<div class="empty-note" style="padding:16px 0;">Could not load messages.</div>'; });
+      .catch(function () { if (isFirstLoad) box.innerHTML = '<div class="empty-note" style="padding:16px 0;">Could not load messages.</div>'; });
   }
+
+  document.getElementById('rldWaClearBtn').addEventListener('click', function () {
+    if (!activeDetail || activeDetail.type !== 'lead') return;
+    if (!window.confirm('Clear this WhatsApp thread? This only deletes the copy stored here — nothing changes on WhatsApp itself.')) return;
+    fetch('/api/accounts/' + accountId + '/re/whatsapp/conversations/' + activeDetail.id, { method: 'DELETE' })
+      .then(function (res) { return res.json(); })
+      .then(function () {
+        document.getElementById('rldWaMessages').removeAttribute('data-loaded');
+        loadRldWaMessages(activeDetail.id);
+        showToast('Chat cleared.');
+      });
+  });
 
   function escapeHtmlWa(s) {
     return String(s || '').replace(/[&<>"']/g, function (c) {
@@ -1634,6 +1681,7 @@
     document.getElementById('reInvDescription').value = i ? (i.description || '') : '';
     document.getElementById('reInvLat').value = i && i.latitude != null ? i.latitude : '';
     document.getElementById('reInvLng').value = i && i.longitude != null ? i.longitude : '';
+    document.getElementById('reInvImages').value = i && i.images && i.images.length ? i.images.join('\n') : '';
     reInventoryModal.classList.add('show');
   }
 
@@ -1657,7 +1705,8 @@
       amenities: document.getElementById('reInvAmenities').value.trim(),
       description: document.getElementById('reInvDescription').value.trim(),
       latitude: document.getElementById('reInvLat').value.trim() === '' ? null : Number(document.getElementById('reInvLat').value),
-      longitude: document.getElementById('reInvLng').value.trim() === '' ? null : Number(document.getElementById('reInvLng').value)
+      longitude: document.getElementById('reInvLng').value.trim() === '' ? null : Number(document.getElementById('reInvLng').value),
+      images: document.getElementById('reInvImages').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean)
     };
     var btn = document.getElementById('reInventorySave');
     btn.disabled = true;
@@ -1971,7 +2020,10 @@
 
     showSection('viewReLeadDetail');
     renderReTimeline('rldTimeline', '/api/accounts/' + accountId + '/re/leads/' + leadId + '/activity', 'No activity on this lead yet.');
+    stopRldWaPoll();
+    document.getElementById('rldWaMessages').removeAttribute('data-loaded');
     loadRldWaMessages(leadId);
+    rldWaPollTimer = setInterval(function () { loadRldWaMessages(leadId); }, RLD_WA_POLL_MS);
   }
 
   document.getElementById('rldEditBtn').addEventListener('click', function () {
@@ -1981,7 +2033,7 @@
     if (activeDetail && activeDetail.type === 'lead') openReVisitModal(null, activeDetail.id);
   });
   document.getElementById('rldBack').addEventListener('click', function (e) {
-    e.preventDefault(); activeDetail = null; switchView('releads');
+    e.preventDefault(); stopRldWaPoll(); activeDetail = null; switchView('releads');
   });
   document.getElementById('rldOwnerSelect').addEventListener('change', function () {
     if (!activeDetail || activeDetail.type !== 'lead') return;
@@ -2333,6 +2385,8 @@
 
   // ---- sidebar navigation ----
   function switchView(view) {
+    if (view !== 'whatsapp') stopWaChatPoll();
+    if (view !== 'reLeadDetail') stopRldWaPoll();
     document.querySelectorAll('.side-nav-item').forEach(function (item) {
       item.classList.toggle('active', item.getAttribute('data-view') === view);
     });

@@ -466,6 +466,12 @@ app.get('/api/accounts/:id/re/whatsapp/conversations/:leadId', requireAuth, asyn
   res.json(messages);
 }));
 
+app.delete('/api/accounts/:id/re/whatsapp/conversations/:leadId', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  await db.clearREWAConversation(req.params.id, req.params.leadId);
+  res.json({ ok: true });
+}));
+
 app.post('/api/accounts/:id/re/whatsapp/send', requireAuth, asyncRoute(async (req, res) => {
   if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
   const { leadId, text } = req.body || {};

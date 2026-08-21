@@ -217,6 +217,12 @@ ALTER TABLE re_inventory ADD COLUMN IF NOT EXISTS longitude numeric;
 -- also moves status to 'Site Visit').
 ALTER TABLE re_leads ADD COLUMN IF NOT EXISTS wa_conversation_stage text;
 
+-- Property photos: public HTTPS image URLs (WhatsApp's image message API
+-- requires a publicly reachable link, not a file upload), shown in the
+-- Inventory add/edit form and usable by the WhatsApp agent's
+-- send_property_photos tool once a lead shows interest in a listing.
+ALTER TABLE re_inventory ADD COLUMN IF NOT EXISTS images text[] DEFAULT '{}';
+
 CREATE INDEX IF NOT EXISTS idx_re_leads_phone ON re_leads(phone);
 CREATE INDEX IF NOT EXISTS idx_re_leads_account ON re_leads(account_id);
 CREATE INDEX IF NOT EXISTS idx_re_brokers_account ON re_brokers(account_id);

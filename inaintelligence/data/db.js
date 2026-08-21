@@ -504,7 +504,8 @@ async function getAccountDetail(accountId) {
         bedrooms: i.bedrooms, bathrooms: i.bathrooms, possessionDate: i.possession_date,
         amenities: i.amenities, description: i.description,
         latitude: i.latitude !== null && i.latitude !== undefined ? Number(i.latitude) : null,
-        longitude: i.longitude !== null && i.longitude !== undefined ? Number(i.longitude) : null
+        longitude: i.longitude !== null && i.longitude !== undefined ? Number(i.longitude) : null,
+        images: i.images || []
       })),
       accounting: accounting.map((t) => ({
         id: t.id, date: t.txn_date, clientName: t.client_name, property: t.property,
@@ -869,17 +870,18 @@ async function updateREBroker(accountId, brokerId, { name, phone, email, zone, s
   return { ok: true };
 }
 
-async function addREInventory(accountId, { projectName, unitNo, type, areaSqft, price, status, location, bedrooms, bathrooms, possessionDate, amenities, description, latitude, longitude }, actorName) {
+async function addREInventory(accountId, { projectName, unitNo, type, areaSqft, price, status, location, bedrooms, bathrooms, possessionDate, amenities, description, latitude, longitude, images }, actorName) {
   if (!projectName) return { error: 'Project name is required.' };
   const invStatus = RE_INVENTORY_STATUSES.includes(status) ? status : 'Available';
   const itemId = id('re_prop');
   await pool.query(
-    `INSERT INTO re_inventory (id, account_id, project_name, unit_no, type, area_sqft, price, status, location, bedrooms, bathrooms, possession_date, amenities, description, latitude, longitude)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+    `INSERT INTO re_inventory (id, account_id, project_name, unit_no, type, area_sqft, price, status, location, bedrooms, bathrooms, possession_date, amenities, description, latitude, longitude, images)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
     [itemId, accountId, projectName, unitNo || null, type || null, Number(areaSqft) || null, Number(price) || 0, invStatus, location || null,
       bedrooms === '' || bedrooms === undefined ? null : Number(bedrooms), bathrooms === '' || bathrooms === undefined ? null : Number(bathrooms),
       possessionDate || null, amenities || null, description || null,
-      latitude === '' || latitude === undefined ? null : Number(latitude), longitude === '' || longitude === undefined ? null : Number(longitude)]
+      latitude === '' || latitude === undefined ? null : Number(latitude), longitude === '' || longitude === undefined ? null : Number(longitude),
+      Array.isArray(images) ? images.filter(Boolean) : []]
   );
   await pool.query(
     'INSERT INTO activity (id, account_id, text, actor_name, re_inventory_id) VALUES ($1,$2,$3,$4,$5)',
@@ -888,7 +890,7 @@ async function addREInventory(accountId, { projectName, unitNo, type, areaSqft, 
   return { ok: true, id: itemId };
 }
 
-async function updateREInventory(accountId, itemId, { projectName, unitNo, type, areaSqft, price, status, location, bedrooms, bathrooms, possessionDate, amenities, description, latitude, longitude }, actorName) {
+async function updateREInventory(accountId, itemId, { projectName, unitNo, type, areaSqft, price, status, location, bedrooms, bathrooms, possessionDate, amenities, description, latitude, longitude, images }, actorName) {
   const { rows } = await pool.query('SELECT * FROM re_inventory WHERE id=$1 AND account_id=$2', [itemId, accountId]);
   if (!rows[0]) return { error: 'Inventory unit not found.' };
   if (!projectName) return { error: 'Project name is required.' };
@@ -896,12 +898,13 @@ async function updateREInventory(accountId, itemId, { projectName, unitNo, type,
 
   await pool.query(
     `UPDATE re_inventory SET project_name=$1, unit_no=$2, type=$3, area_sqft=$4, price=$5, status=$6, location=$7,
-       bedrooms=$8, bathrooms=$9, possession_date=$10, amenities=$11, description=$12, latitude=$13, longitude=$14
-     WHERE id=$15`,
+       bedrooms=$8, bathrooms=$9, possession_date=$10, amenities=$11, description=$12, latitude=$13, longitude=$14, images=$15
+     WHERE id=$16`,
     [projectName, unitNo || null, type || null, Number(areaSqft) || null, Number(price) || 0, invStatus, location || null,
       bedrooms === '' || bedrooms === undefined ? null : Number(bedrooms), bathrooms === '' || bathrooms === undefined ? null : Number(bathrooms),
       possessionDate || null, amenities || null, description || null,
       latitude === '' || latitude === undefined ? null : Number(latitude), longitude === '' || longitude === undefined ? null : Number(longitude),
+      Array.isArray(images) ? images.filter(Boolean) : (rows[0].images || []),
       itemId]
   );
   const note = rows[0].status !== invStatus ? ` — status ${rows[0].status} → ${invStatus}` : '';
@@ -1050,6 +1053,13 @@ async function getREWAConversation(accountId, leadId, limit) {
   return rows.reverse().map((r) => ({ direction: r.direction, message: r.message, at: new Date(r.created_at).getTime() }));
 }
 
+/** Wipes the stored WhatsApp thread with a lead — the "Clear chat" button.
+ * Only clears our own local copy of the conversation; doesn't touch the
+ * actual WhatsApp thread on either phone. */
+async function clearREWAConversation(accountId, leadId) {
+  await pool.query('DELETE FROM re_wa_messages WHERE account_id=$1 AND lead_id=$2', [accountId, leadId]);
+}
+
 /** Recent WhatsApp threads for the WhatsApp Integration tab's inbox — one row per lead with a WA message, newest first. */
 async function getRecentREWAThreads(accountId, limit) {
   const { rows } = await pool.query(
@@ -1136,12 +1146,26 @@ async function searchREInventory(accountId, { area, property_type, min_price, ma
   if (min_bedrooms != null) { values.push(min_bedrooms); conditions.push(`bedrooms >= $${values.length}`); }
 
   const { rows } = await pool.query(
-    `SELECT project_name, unit_no, type, area_sqft, bedrooms, bathrooms, price, location, description
+    `SELECT id, project_name, unit_no, type, area_sqft, bedrooms, bathrooms, price, location, description,
+            coalesce(array_length(images, 1), 0) AS photo_count
      FROM re_inventory WHERE ${conditions.join(' AND ')}
      ORDER BY price ASC NULLS LAST LIMIT 5`,
     values
   );
   return rows;
+}
+
+/** Used by the WhatsApp agent's send_property_photos tool — looks up the
+ * public image URLs for one listing so they can be sent as WhatsApp image
+ * messages. Scoped to accountId so the agent can't leak another account's
+ * inventory even if it hallucinated an id. */
+async function getREInventoryImages(accountId, itemId) {
+  const { rows } = await pool.query(
+    'SELECT project_name, unit_no, images FROM re_inventory WHERE id=$1 AND account_id=$2',
+    [itemId, accountId]
+  );
+  if (!rows[0]) return null;
+  return { projectName: rows[0].project_name, unitNo: rows[0].unit_no, images: rows[0].images || [] };
 }
 
 // Manager-facing, one-screen rollup: for every broker, target vs. total
@@ -1290,7 +1314,7 @@ module.exports = {
   addRELeadNote, getRELeadActivity, getREBrokerActivity, getREInventoryActivity,
   bulkAddRELeads, getREMonthlyReport,
   addRESiteVisit, updateRESiteVisit,
-  findOrCreateREWALead, addREWAMessage, getREWAConversation, getRecentREWAThreads, applyREWAAgentUpdate, searchREInventory,
+  findOrCreateREWALead, addREWAMessage, getREWAConversation, clearREWAConversation, getRecentREWAThreads, applyREWAAgentUpdate, searchREInventory, getREInventoryImages,
   resolveWhatsAppAccountId, getRELeadPhone,
   createAccount, MODULE_PRESETS, LICENSE_TERMS
 };

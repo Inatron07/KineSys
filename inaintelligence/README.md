@@ -294,6 +294,41 @@ auto-replying. See `.env.example` for the full list of WhatsApp/Claude
 variables, and the repo-root `render.yaml` for deploying this with a stable
 public URL.
 
+#### Inline chat window
+
+Clicking a lead's message icon (or a row in "Recent conversations") opens a
+real chat window in place — avatar, name, phone, the full message thread as
+WhatsApp-style bubbles, and a reply box — instead of navigating away. The
+same panel exists on the lead detail page's WhatsApp card. Both have a
+**"Clear chat"** button (with a confirm prompt) that deletes that lead's
+stored `re_wa_messages` rows — this only clears the copy kept in this app;
+it does nothing to the conversation on WhatsApp itself.
+
+Both chat views poll the conversation every 4 seconds
+(`GET /re/whatsapp/conversations/:leadId`) while open, so a message you send
+or one the lead/Zara sends back shows up within a few seconds without a
+manual refresh — there's no websocket, just a lightweight interval that
+starts when you open a chat and is stopped (via `stopWaChatPoll` /
+`stopRldWaPoll`) the moment you close it, switch leads, or navigate to
+another tab, so there's never more than one timer running. To avoid the
+message list flickering every poll, it only shows the loading spinner on
+the very first open and skips the DOM update entirely when nothing's
+changed since the last poll; it also only auto-scrolls to the newest
+message if you were already scrolled near the bottom, so scrolling up to
+read history doesn't get yanked back down every 4 seconds.
+
+#### Property photos
+
+`re_inventory` has an `images` column (`text[]`, public HTTPS links) —
+editable from the Inventory add/edit modal as a "Photo URLs (one per line)"
+box. Zara's `search_properties` tool now also returns a `photo_count` per
+match, and a new `send_property_photos` tool lets her actually send a
+listing's real photos over WhatsApp once a lead shows interest in that
+specific unit (she's instructed not to send them unprompted or for every
+match). Photo links need to be direct public image URLs — not a Google
+Drive/Photos share page — since WhatsApp's image message API fetches the
+link itself.
+
 ### Search, filter, and multi-select on every table
 
 Leads, Brokers, Inventory, Accounting, Site Visits, Team, and Monthly

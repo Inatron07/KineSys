@@ -55,6 +55,18 @@ async function sendTextMessage(to, body) {
   return res.data;
 }
 
+/**
+ * Send a single image by public HTTPS URL (WhatsApp fetches and re-hosts it
+ * on their CDN — no file upload/media ID needed). Like sendTextMessage, only
+ * works within the 24h customer-service window unless sent as part of a
+ * template. Caption is optional.
+ */
+async function sendImageMessage(to, imageUrl, caption) {
+  const payload = { messaging_product: 'whatsapp', to, type: 'image', image: { link: imageUrl, caption: caption || undefined } };
+  const res = await client().post('', payload);
+  return res.data;
+}
+
 /** Meta's GET /webhook verification handshake, performed once when the callback URL is saved. */
 function verifyWebhookChallenge(query) {
   const mode = query['hub.mode'];
@@ -98,4 +110,4 @@ function parseIncomingMessage(body) {
   }
 }
 
-module.exports = { isConfigured, sendTemplateMessage, sendTextMessage, verifyWebhookChallenge, parseIncomingMessage };
+module.exports = { isConfigured, sendTemplateMessage, sendTextMessage, sendImageMessage, verifyWebhookChallenge, parseIncomingMessage };

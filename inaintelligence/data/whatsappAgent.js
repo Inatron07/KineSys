@@ -10,6 +10,7 @@
 require('dotenv').config();
 const Anthropic = require('@anthropic-ai/sdk');
 const db = require('./db');
+const whatsapp = require('./whatsappClient');
 
 function isConfigured() {
   return !!process.env.ANTHROPIC_API_KEY;
@@ -38,7 +39,7 @@ const UPDATE_LEAD_TOOL = {
 const SEARCH_PROPERTIES_TOOL = {
   name: 'search_properties',
   description:
-    "Search current available listings. Use this whenever the lead asks about specific properties, pricing, or what's available in an area — never guess or invent listing details. Returns up to 5 matches.",
+    "Search current available listings. Use this whenever the lead asks about specific properties, pricing, or what's available in an area — never guess or invent listing details. Returns up to 5 matches, each with an `id` and a `photo_count` telling you whether photos are on file.",
   input_schema: {
     type: 'object',
     properties: {
@@ -51,7 +52,20 @@ const SEARCH_PROPERTIES_TOOL = {
   },
 };
 
-const TOOLS = [UPDATE_LEAD_TOOL, SEARCH_PROPERTIES_TOOL];
+const SEND_PHOTOS_TOOL = {
+  name: 'send_property_photos',
+  description:
+    "Send the real photos of one specific listing to the lead over WhatsApp. Only call this with an id returned by search_properties where photo_count > 0, and only when the lead is interested in that specific listing or explicitly asks to see photos — never call it speculatively.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      property_id: { type: 'string', description: 'The id field from a search_properties result.' },
+    },
+    required: ['property_id'],
+  },
+};
+
+const TOOLS = [UPDATE_LEAD_TOOL, SEARCH_PROPERTIES_TOOL, SEND_PHOTOS_TOOL];
 const MAX_TOOL_ROUNDS = 4;
 
 function buildSystemPrompt(lead) {
@@ -93,6 +107,10 @@ LISTINGS (use the search_properties tool):
   property, price, or address.
 - Don't dump all results as a list — mention one or two of the best matches
   conversationally and ask if they'd like more.
+- If a match has photo_count > 0 and the lead seems interested in that specific
+  listing (or asks to see it), offer to send photos, then call
+  send_property_photos with its id once they say yes. Don't send photos
+  unprompted or for every match — only the one they're actually interested in.
 
 WHEN TO ESCALATE TO A HUMAN (use the update_lead_stage tool):
 - The lead wants to schedule a site visit or call → stage "booked_viewing"
@@ -103,6 +121,28 @@ WHEN TO ESCALATE TO A HUMAN (use the update_lead_stage tool):
 
 Always call the update_lead_stage tool once per turn to keep the lead's record
 current, using your best judgement on stage/notes, THEN write your WhatsApp reply.`;
+}
+
+/**
+ * Actually sends a listing's photos over WhatsApp (a real side effect, not
+ * just a text reply) and returns a short string describing what happened,
+ * fed back to Claude as the tool result so it can react in its next message.
+ */
+async function sendPropertyPhotos(accountId, phone, propertyId) {
+  if (!phone) return 'This lead has no phone number on file — cannot send photos.';
+  const listing = await db.getREInventoryImages(accountId, propertyId);
+  if (!listing) return 'No listing found with that id.';
+  if (!listing.images.length) return `No photos on file for ${listing.projectName}.`;
+  let sent = 0;
+  for (const url of listing.images) {
+    try {
+      await whatsapp.sendImageMessage(phone, url);
+      sent++;
+    } catch (err) {
+      console.error('[whatsappAgent] failed to send property photo', url, err.response?.data || err.message);
+    }
+  }
+  return sent ? `Sent ${sent} photo(s) of ${listing.projectName}${listing.unitNo ? ' ' + listing.unitNo : ''}.` : 'Failed to send photos.';
 }
 
 /**
@@ -147,6 +187,9 @@ async function generateReply(accountId, lead, history, incomingText) {
           tool_use_id: call.id,
           content: matches.length ? JSON.stringify(matches) : 'No matching available properties found.',
         });
+      } else if (call.name === 'send_property_photos') {
+        const result = await sendPropertyPhotos(accountId, lead.phone, call.input.property_id);
+        toolResults.push({ type: 'tool_result', tool_use_id: call.id, content: result });
       } else {
         toolResults.push({ type: 'tool_result', tool_use_id: call.id, content: 'Unknown tool.', is_error: true });
       }
