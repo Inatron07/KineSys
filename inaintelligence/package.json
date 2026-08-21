@@ -8,7 +8,8 @@
     "start": "node server.js",
     "dev": "node server.js",
     "seed": "node data/seed.js",
-    "seed:realestate": "node data/seed-realestate.js"
+    "seed:realestate": "node data/seed-realestate.js",
+    "update:dubai-inventory": "node data/update-inventory-dubai.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

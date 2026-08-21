@@ -360,6 +360,28 @@ serves `public/downloads/leads-upload-sample.xlsx`, a ready-made
 15-lead example (matching the seeded demo brokers) you can download
 and re-upload to demo the whole round trip.
 
+### Inventory: Dubai and surrounding areas, with photos
+
+The demo inventory (and `send_property_photos`-ready listings) are all Dubai
+and greater-Dubai (Dubai Marina, Downtown Dubai, Business Bay, Palm Jumeirah,
+Dubai Hills Estate, JVC, plus Sharjah and Ajman as neighboring-emirate
+listings), priced in AED, each with a placeholder photo URL. If your account
+was seeded before this change (i.e. it already has real leads, so
+`seed-realestate.js`'s inventory block is skipped as "already loaded"), run:
+
+```
+npm run update:dubai-inventory
+```
+
+once against the production `DATABASE_URL` to relocate the original 7
+India-based listings to their Dubai equivalents in place and add 2 new
+Sharjah/Ajman listings — safe to re-run, leads/brokers/accounting are
+untouched. The photo URLs are Picsum stock placeholders, not real listing
+photos — swap them for the real thing any time via each property's Edit
+modal ("Photo URLs" field). Note the original demo leads' "Property
+interest" text (e.g. "Skyline Heights, Andheri") still references the old
+project names — update those by hand if you want them to match.
+
 ### Seed the demo Real Estate CRM account
 
 A ready-to-use account, pre-loaded with the exact dummy data from the
