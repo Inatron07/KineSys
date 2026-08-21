@@ -9,12 +9,18 @@
 #
 # Render sets PORT itself for web services; server.js already reads
 # process.env.PORT, so it isn't listed here.
+#
+# plan: free — no card required, but Render spins the service down after
+# 15 min of inactivity. First request after idle takes ~30-60s to wake up,
+# and an inbound WhatsApp message that lands during that window can time
+# out. Fine for testing; switch to `starter` before relying on this for
+# real leads.
 
 services:
   - type: web
     name: kinesys-inaintelligence
     runtime: node
-    plan: starter
+    plan: free
     rootDir: inaintelligence
     buildCommand: npm install
     startCommand: npm start
