@@ -26,20 +26,20 @@ const ADMIN_USERNAME = 'Inacio Fernandes';
 // unit_no) so this can find the 7 rows already in production and relocate
 // them in place.
 const RELOCATIONS = [
-  { was: { projectName: 'Skyline Heights', unitNo: 'A-1204' }, now: { projectName: 'Marina Heights', unitNo: '1204', type: '2BHK', areaSqft: 1050, price: 2150000, status: 'Available', location: 'Dubai Marina', images: ['https://picsum.photos/id/10/1200/800'] } },
-  { was: { projectName: 'Skyline Heights', unitNo: 'A-1205' }, now: { projectName: 'Marina Heights', unitNo: '1205', type: '1BHK', areaSqft: 720, price: 1280000, status: 'Available', location: 'Dubai Marina', images: ['https://picsum.photos/id/20/1200/800'] } },
-  { was: { projectName: 'Palm Villas', unitNo: 'V-07' }, now: { projectName: 'Palm Jumeirah Signature Villas', unitNo: 'V-07', type: 'Villa', areaSqft: 3200, price: 9800000, status: 'Available', location: 'Palm Jumeirah', images: ['https://picsum.photos/id/30/1200/800'] } },
-  { was: { projectName: 'Oceanview Towers', unitNo: 'B-0901' }, now: { projectName: 'Downtown Vista', unitNo: '0901', type: '3BHK', areaSqft: 1650, price: 4250000, status: 'Reserved', location: 'Downtown Dubai', images: ['https://picsum.photos/id/40/1200/800'] } },
-  { was: { projectName: 'Green Meadows', unitNo: 'Plot-22' }, now: { projectName: 'Dubai Hills Estate Plots', unitNo: 'Plot-22', type: 'Plot', areaSqft: 2400, price: 3600000, status: 'Available', location: 'Dubai Hills Estate', images: ['https://picsum.photos/id/50/1200/800'] } },
-  { was: { projectName: 'Metro Business Park', unitNo: 'MBP-501' }, now: { projectName: 'Business Bay Corporate Tower', unitNo: '501', type: 'Office', areaSqft: 2000, price: 5750000, status: 'Negotiation', location: 'Business Bay', images: ['https://picsum.photos/id/60/1200/800'] } },
-  { was: { projectName: 'Sunrise Residency', unitNo: 'C-0302' }, now: { projectName: 'JVC Sunrise Residences', unitNo: '0302', type: '2BHK', areaSqft: 980, price: 1150000, status: 'Sold', location: 'Jumeirah Village Circle (JVC)', images: ['https://picsum.photos/id/70/1200/800'] } }
+  { was: { projectName: 'Skyline Heights', unitNo: 'A-1204' }, now: { projectName: 'Marina Heights', unitNo: '1204', type: '2BHK', areaSqft: 1050, bedrooms: 2, bathrooms: 2, price: 2150000, status: 'Available', location: 'Dubai Marina', images: ['https://picsum.photos/id/10/1200/800'] } },
+  { was: { projectName: 'Skyline Heights', unitNo: 'A-1205' }, now: { projectName: 'Marina Heights', unitNo: '1205', type: '1BHK', areaSqft: 720, bedrooms: 1, bathrooms: 2, price: 1280000, status: 'Available', location: 'Dubai Marina', images: ['https://picsum.photos/id/20/1200/800'] } },
+  { was: { projectName: 'Palm Villas', unitNo: 'V-07' }, now: { projectName: 'Palm Jumeirah Signature Villas', unitNo: 'V-07', type: 'Villa', areaSqft: 3200, bedrooms: 5, bathrooms: 6, price: 9800000, status: 'Available', location: 'Palm Jumeirah', images: ['https://picsum.photos/id/30/1200/800'] } },
+  { was: { projectName: 'Oceanview Towers', unitNo: 'B-0901' }, now: { projectName: 'Downtown Vista', unitNo: '0901', type: '3BHK', areaSqft: 1650, bedrooms: 3, bathrooms: 4, price: 4250000, status: 'Reserved', location: 'Downtown Dubai', images: ['https://picsum.photos/id/40/1200/800'] } },
+  { was: { projectName: 'Green Meadows', unitNo: 'Plot-22' }, now: { projectName: 'Dubai Hills Estate Plots', unitNo: 'Plot-22', type: 'Plot', areaSqft: 2400, bedrooms: null, bathrooms: null, price: 3600000, status: 'Available', location: 'Dubai Hills Estate', images: ['https://picsum.photos/id/50/1200/800'] } },
+  { was: { projectName: 'Metro Business Park', unitNo: 'MBP-501' }, now: { projectName: 'Business Bay Corporate Tower', unitNo: '501', type: 'Office', areaSqft: 2000, bedrooms: null, bathrooms: 2, price: 5750000, status: 'Negotiation', location: 'Business Bay', images: ['https://picsum.photos/id/60/1200/800'] } },
+  { was: { projectName: 'Sunrise Residency', unitNo: 'C-0302' }, now: { projectName: 'JVC Sunrise Residences', unitNo: '0302', type: '2BHK', areaSqft: 980, bedrooms: 2, bathrooms: 2, price: 1150000, status: 'Sold', location: 'Jumeirah Village Circle (JVC)', images: ['https://picsum.photos/id/70/1200/800'] } }
 ];
 
 // Brand-new "surrounding areas" listings that didn't exist before — inserted
 // only if a property with that name isn't already there.
 const NEW_LISTINGS = [
-  { projectName: 'Al Majaz Waterfront Residences', unitNo: '204', type: '2BHK', areaSqft: 1100, price: 850000, status: 'Available', location: 'Sharjah (Al Majaz)', images: ['https://picsum.photos/id/80/1200/800'] },
-  { projectName: 'Ajman Corniche Towers', unitNo: '1502', type: '1BHK', areaSqft: 750, price: 480000, status: 'Available', location: 'Ajman Corniche', images: ['https://picsum.photos/id/90/1200/800'] }
+  { projectName: 'Al Majaz Waterfront Residences', unitNo: '204', type: '2BHK', areaSqft: 1100, bedrooms: 2, bathrooms: 3, price: 850000, status: 'Available', location: 'Sharjah (Al Majaz)', images: ['https://picsum.photos/id/80/1200/800'] },
+  { projectName: 'Ajman Corniche Towers', unitNo: '1502', type: '1BHK', areaSqft: 750, bedrooms: 1, bathrooms: 2, price: 480000, status: 'Available', location: 'Ajman Corniche', images: ['https://picsum.photos/id/90/1200/800'] }
 ];
 
 async function run() {
@@ -54,24 +54,40 @@ async function run() {
 
   let updated = 0;
   for (const r of RELOCATIONS) {
-    const { rowCount } = await db.pool.query(
-      `UPDATE re_inventory SET project_name=$1, unit_no=$2, type=$3, area_sqft=$4, price=$5, status=$6, location=$7, images=$8
-       WHERE account_id=$9 AND project_name=$10 AND unit_no=$11`,
-      [r.now.projectName, r.now.unitNo, r.now.type, r.now.areaSqft, r.now.price, r.now.status, r.now.location, r.now.images,
+    let result = await db.pool.query(
+      `UPDATE re_inventory SET project_name=$1, unit_no=$2, type=$3, area_sqft=$4, price=$5, status=$6, location=$7, images=$8, bedrooms=$9, bathrooms=$10
+       WHERE account_id=$11 AND project_name=$12 AND unit_no=$13`,
+      [r.now.projectName, r.now.unitNo, r.now.type, r.now.areaSqft, r.now.price, r.now.status, r.now.location, r.now.images, r.now.bedrooms, r.now.bathrooms,
         accountId, r.was.projectName, r.was.unitNo]
     );
-    if (rowCount) { updated += rowCount; console.log('  Relocated:', r.was.projectName, r.was.unitNo, '->', r.now.projectName, r.now.location); }
-    else console.log('  Skipped (not found, maybe already relocated):', r.was.projectName, r.was.unitNo);
+    if (!result.rowCount) {
+      // Already relocated in an earlier run (old project_name/unit_no won't
+      // match anymore) — re-apply against the new name instead, so re-running
+      // this script after adding a new field (like bedrooms/bathrooms) still
+      // fills it in on rows that were already moved.
+      result = await db.pool.query(
+        `UPDATE re_inventory SET type=$1, area_sqft=$2, price=$3, status=$4, location=$5, images=$6, bedrooms=$7, bathrooms=$8
+         WHERE account_id=$9 AND project_name=$10 AND unit_no=$11`,
+        [r.now.type, r.now.areaSqft, r.now.price, r.now.status, r.now.location, r.now.images, r.now.bedrooms, r.now.bathrooms,
+          accountId, r.now.projectName, r.now.unitNo]
+      );
+    }
+    if (result.rowCount) { updated += result.rowCount; console.log('  Relocated:', r.was.projectName, r.was.unitNo, '->', r.now.projectName, r.now.location); }
+    else console.log('  Skipped (not found under old or new name):', r.was.projectName, r.was.unitNo);
   }
 
   let inserted = 0;
   for (const n of NEW_LISTINGS) {
     const { rows } = await db.pool.query('SELECT id FROM re_inventory WHERE account_id=$1 AND project_name=$2', [accountId, n.projectName]);
-    if (rows.length) { console.log('  Already exists, skipping:', n.projectName); continue; }
+    if (rows.length) {
+      await db.pool.query('UPDATE re_inventory SET bedrooms=$1, bathrooms=$2 WHERE id=$3', [n.bedrooms, n.bathrooms, rows[0].id]);
+      console.log('  Already exists, refreshed bedrooms/bathrooms:', n.projectName);
+      continue;
+    }
     await db.pool.query(
-      `INSERT INTO re_inventory (id, account_id, project_name, unit_no, type, area_sqft, price, status, location, images)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [db.id('re_prop'), accountId, n.projectName, n.unitNo, n.type, n.areaSqft, n.price, n.status, n.location, n.images]
+      `INSERT INTO re_inventory (id, account_id, project_name, unit_no, type, area_sqft, price, status, location, images, bedrooms, bathrooms)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      [db.id('re_prop'), accountId, n.projectName, n.unitNo, n.type, n.areaSqft, n.price, n.status, n.location, n.images, n.bedrooms, n.bathrooms]
     );
     inserted++;
     console.log('  Added:', n.projectName, n.location);

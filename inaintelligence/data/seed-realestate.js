@@ -40,15 +40,15 @@ const LEADS = [
 // have something to show out of the box; swap them for real listing photos
 // any time via the Inventory "Edit" modal's Photo URLs field.
 const INVENTORY = [
-  { projectName: 'Marina Heights', unitNo: '1204', type: '2BHK', areaSqft: 1050, price: 2150000, status: 'Available', location: 'Dubai Marina', images: ['https://picsum.photos/id/10/1200/800'] },
-  { projectName: 'Marina Heights', unitNo: '1205', type: '1BHK', areaSqft: 720, price: 1280000, status: 'Available', location: 'Dubai Marina', images: ['https://picsum.photos/id/20/1200/800'] },
-  { projectName: 'Palm Jumeirah Signature Villas', unitNo: 'V-07', type: 'Villa', areaSqft: 3200, price: 9800000, status: 'Available', location: 'Palm Jumeirah', images: ['https://picsum.photos/id/30/1200/800'] },
-  { projectName: 'Downtown Vista', unitNo: '0901', type: '3BHK', areaSqft: 1650, price: 4250000, status: 'Reserved', location: 'Downtown Dubai', images: ['https://picsum.photos/id/40/1200/800'] },
-  { projectName: 'Dubai Hills Estate Plots', unitNo: 'Plot-22', type: 'Plot', areaSqft: 2400, price: 3600000, status: 'Available', location: 'Dubai Hills Estate', images: ['https://picsum.photos/id/50/1200/800'] },
-  { projectName: 'Business Bay Corporate Tower', unitNo: '501', type: 'Office', areaSqft: 2000, price: 5750000, status: 'Negotiation', location: 'Business Bay', images: ['https://picsum.photos/id/60/1200/800'] },
-  { projectName: 'JVC Sunrise Residences', unitNo: '0302', type: '2BHK', areaSqft: 980, price: 1150000, status: 'Sold', location: 'Jumeirah Village Circle (JVC)', images: ['https://picsum.photos/id/70/1200/800'] },
-  { projectName: 'Al Majaz Waterfront Residences', unitNo: '204', type: '2BHK', areaSqft: 1100, price: 850000, status: 'Available', location: 'Sharjah (Al Majaz)', images: ['https://picsum.photos/id/80/1200/800'] },
-  { projectName: 'Ajman Corniche Towers', unitNo: '1502', type: '1BHK', areaSqft: 750, price: 480000, status: 'Available', location: 'Ajman Corniche', images: ['https://picsum.photos/id/90/1200/800'] }
+  { projectName: 'Marina Heights', unitNo: '1204', type: '2BHK', areaSqft: 1050, bedrooms: 2, bathrooms: 2, price: 2150000, status: 'Available', location: 'Dubai Marina', images: ['https://picsum.photos/id/10/1200/800'] },
+  { projectName: 'Marina Heights', unitNo: '1205', type: '1BHK', areaSqft: 720, bedrooms: 1, bathrooms: 2, price: 1280000, status: 'Available', location: 'Dubai Marina', images: ['https://picsum.photos/id/20/1200/800'] },
+  { projectName: 'Palm Jumeirah Signature Villas', unitNo: 'V-07', type: 'Villa', areaSqft: 3200, bedrooms: 5, bathrooms: 6, price: 9800000, status: 'Available', location: 'Palm Jumeirah', images: ['https://picsum.photos/id/30/1200/800'] },
+  { projectName: 'Downtown Vista', unitNo: '0901', type: '3BHK', areaSqft: 1650, bedrooms: 3, bathrooms: 4, price: 4250000, status: 'Reserved', location: 'Downtown Dubai', images: ['https://picsum.photos/id/40/1200/800'] },
+  { projectName: 'Dubai Hills Estate Plots', unitNo: 'Plot-22', type: 'Plot', areaSqft: 2400, bedrooms: null, bathrooms: null, price: 3600000, status: 'Available', location: 'Dubai Hills Estate', images: ['https://picsum.photos/id/50/1200/800'] },
+  { projectName: 'Business Bay Corporate Tower', unitNo: '501', type: 'Office', areaSqft: 2000, bedrooms: null, bathrooms: 2, price: 5750000, status: 'Negotiation', location: 'Business Bay', images: ['https://picsum.photos/id/60/1200/800'] },
+  { projectName: 'JVC Sunrise Residences', unitNo: '0302', type: '2BHK', areaSqft: 980, bedrooms: 2, bathrooms: 2, price: 1150000, status: 'Sold', location: 'Jumeirah Village Circle (JVC)', images: ['https://picsum.photos/id/70/1200/800'] },
+  { projectName: 'Al Majaz Waterfront Residences', unitNo: '204', type: '2BHK', areaSqft: 1100, bedrooms: 2, bathrooms: 3, price: 850000, status: 'Available', location: 'Sharjah (Al Majaz)', images: ['https://picsum.photos/id/80/1200/800'] },
+  { projectName: 'Ajman Corniche Towers', unitNo: '1502', type: '1BHK', areaSqft: 750, bedrooms: 1, bathrooms: 2, price: 480000, status: 'Available', location: 'Ajman Corniche', images: ['https://picsum.photos/id/90/1200/800'] }
 ];
 
 const ACCOUNTING = [
@@ -252,9 +252,9 @@ async function main() {
     console.log('Loading property inventory...');
     for (const i of INVENTORY) {
       await db.pool.query(
-        `INSERT INTO re_inventory (id, account_id, project_name, unit_no, type, area_sqft, price, status, location, images)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [db.id('re_prop'), accountId, i.projectName, i.unitNo, i.type, i.areaSqft, i.price, i.status, i.location, i.images || []]
+        `INSERT INTO re_inventory (id, account_id, project_name, unit_no, type, area_sqft, price, status, location, images, bedrooms, bathrooms)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [db.id('re_prop'), accountId, i.projectName, i.unitNo, i.type, i.areaSqft, i.price, i.status, i.location, i.images || [], i.bedrooms ?? null, i.bathrooms ?? null]
       );
     }
 
