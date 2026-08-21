@@ -41,6 +41,18 @@
     return new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
+  function fmtDateTime(ts) {
+    if (!ts) return '—';
+    return new Date(ts).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+
+  function toDatetimeLocalValue(ts) {
+    if (!ts) return '';
+    var d = new Date(ts);
+    var pad = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
   // ---- Generic table toolbar: search + filters + row selection ----
   // Every table (Leads, Brokers, Inventory, Accounting, Team) plugs into
   // this the same way: keep a small state object (search text, filter
@@ -591,7 +603,7 @@
     document.getElementById('reDashCards').innerHTML =
       metricCard('New leads today', dash.newLeadsToday || 0) +
       metricCard('Unassigned', dash.unassigned || 0, dash.unassigned > 0 ? 'warn' : '') +
-      metricCard('Site visits', dash.siteVisits || 0) +
+      metricCard('Upcoming site visits', dash.siteVisits || 0) +
       metricCard('Active brokers', dash.activeBrokers || 0) +
       metricCard('Credits used / limit', (data.creditsUsed || 0).toLocaleString() + ' / ' + (data.creditLimit || 0).toLocaleString());
 
@@ -619,6 +631,8 @@
     renderBrokersList();
     renderInventoryTable();
     renderAccountingTable();
+    renderVisitsTable();
+    renderWaLeadsPanel();
 
     document.querySelectorAll('[data-re-action]').forEach(function (btn) {
       btn.addEventListener('click', function () {
@@ -668,7 +682,7 @@
   function populateReFilterOptions(data) {
     fillFilterOptionsPlain('reLeadsFilterStatus', RE_LEAD_STATUSES);
     fillFilterOptionsPairs('reLeadsFilterBroker', (data.brokers || []).map(function (b) { return { value: b.id, label: b.name }; }));
-    fillFilterOptionsPlain('reLeadsFilterSource', uniqueSorted(data.leads.map(function (l) { return l.source; })));
+    fillFilterOptionsPlain('reLeadsFilterSource', RE_LEAD_SOURCES);
 
     fillFilterOptionsPlain('reBrokersFilterStatus', RE_BROKER_STATUSES);
     fillFilterOptionsPlain('reBrokersFilterZone', uniqueSorted(data.brokers.map(function (b) { return b.zone; })));
@@ -680,8 +694,14 @@
     fillFilterOptionsPlain('reAccountingFilterType', uniqueSorted(data.accounting.map(function (t) { return t.type; })));
     fillFilterOptionsPlain('reAccountingFilterMode', uniqueSorted(data.accounting.map(function (t) { return t.paymentMode; })));
 
+    fillFilterOptionsPlain('reVisitsFilterStatus', RE_SITE_VISIT_STATUSES);
+    fillFilterOptionsPairs('reVisitsFilterBroker', (data.brokers || []).map(function (b) { return { value: b.id, label: b.name }; }));
+
     fillFilterOptionsPlain('reportsFilterZone', uniqueSorted(data.brokers.map(function (b) { return b.zone; })));
     fillFilterOptionsPlain('reportsFilterStatus', RE_BROKER_STATUSES);
+
+    fillFilterOptionsPlain('waLeadsFilterInterest', uniqueSorted(data.leads.map(function (l) { return l.propertyInterest; })));
+    fillFilterOptionsPlain('waLeadsFilterStatus', RE_LEAD_STATUSES);
   }
 
   // -- leads table --
@@ -708,12 +728,14 @@
     document.getElementById('reLeadsHeaderCheck').innerHTML = ttHeaderCheckboxHTML('reLeads');
     document.getElementById('reLeadsBody').innerHTML = filtered.map(function (l) {
       return '<tr><td class="tt-check-col">' + ttRowCheckboxHTML('reLeads', l.id) + '</td>' +
-        '<td><a href="#" class="link-btn" data-open-lead="' + l.id + '" style="color:var(--text);font-weight:600;">' + l.name + '</a></td><td>' + (l.propertyInterest || '—') + '</td>' +
+        '<td><a href="#" class="link-btn" data-open-lead="' + l.id + '" style="color:var(--text);font-weight:600;">' + l.name + '</a></td>' +
+        '<td>' + sourceBadge(l.source) + '</td>' +
+        '<td>' + (l.propertyInterest || '—') + '</td>' +
         '<td>' + (l.broker || '<span style="color:var(--warn);">Unassigned</span>') + '</td>' +
         '<td><span class="status-pill ' + reStatusClass(l.status) + '">' + l.status + '</span></td>' +
         '<td>' + (l.nextFollowup || '—') + '</td>' +
         '<td style="text-align:right;"><button class="icon-btn" title="Edit lead" data-re-edit-lead="' + l.id + '">' + PENCIL_ICON + '</button></td></tr>';
-    }).join('') || '<tr><td colspan="7" class="empty-note">' + (active ? 'No leads match your search/filters.' : 'No leads yet.') + '</td></tr>';
+    }).join('') || '<tr><td colspan="8" class="empty-note">' + (active ? 'No leads match your search/filters.' : 'No leads yet.') + '</td></tr>';
     document.querySelectorAll('[data-re-edit-lead]').forEach(function (btn) {
       btn.addEventListener('click', function () { openReLeadModal(btn.getAttribute('data-re-edit-lead')); });
     });
@@ -845,6 +867,46 @@
   }
   ttRenderFns.reAccounting = renderAccountingTable;
 
+  // -- site visits table --
+  function reVisitsFiltered() {
+    if (!currentData) return [];
+    return ttApply('reVisits', currentData.siteVisits || [], ['leadName', 'brokerName', 'propertyLabel'], {
+      status: function (v, val) { return v.status === val; },
+      broker: function (v, val) { return v.brokerId === val; },
+      dateFrom: function (v, val) { return !!v.scheduledAt && new Date(v.scheduledAt).toISOString().slice(0, 10) >= val; },
+      dateTo: function (v, val) { return !!v.scheduledAt && new Date(v.scheduledAt).toISOString().slice(0, 10) <= val; }
+    });
+  }
+  ttVisibleIds.reVisits = function () { return reVisitsFiltered().map(function (v) { return v.id; }); };
+
+  function renderVisitsTable() {
+    if (!currentData) return;
+    var filtered = reVisitsFiltered();
+    var active = ttToolbarActive('reVisits');
+    var total = (currentData.siteVisits || []).length;
+    document.getElementById('reVisitsSub').textContent = filtered.length + (active ? ' of ' + total : '') + (filtered.length === 1 ? ' visit' : ' visits');
+    document.getElementById('reVisitsSelectionBar').innerHTML = ttSelectionBarHTML('reVisits', 'visit');
+    document.getElementById('reVisitsHeaderCheck').innerHTML = ttHeaderCheckboxHTML('reVisits');
+    document.getElementById('reVisitsBody').innerHTML = filtered.map(function (v) {
+      return '<tr><td class="tt-check-col">' + ttRowCheckboxHTML('reVisits', v.id) + '</td>' +
+        '<td>' + (v.leadId ? '<a href="#" class="link-btn" data-open-lead="' + v.leadId + '" style="color:var(--text);font-weight:600;">' + v.leadName + '</a>' : (v.leadName || '—')) + '</td>' +
+        '<td>' + (v.propertyLabel || '—') + '</td>' +
+        '<td>' + (v.brokerName || '<span style="color:var(--warn);">Unassigned</span>') + '</td>' +
+        '<td>' + fmtDateTime(v.scheduledAt) + '</td>' +
+        '<td><span class="status-pill ' + reStatusClass(v.status) + '">' + v.status + '</span></td>' +
+        '<td>' + (v.notes || '—') + '</td>' +
+        '<td style="text-align:right;"><button class="icon-btn" title="Edit visit" data-re-edit-visit="' + v.id + '">' + PENCIL_ICON + '</button></td></tr>';
+    }).join('') || '<tr><td colspan="8" class="empty-note">' + (active ? 'No visits match your search/filters.' : 'No site visits scheduled yet.') + '</td></tr>';
+    document.querySelectorAll('[data-re-edit-visit]').forEach(function (btn) {
+      btn.addEventListener('click', function () { openReVisitModal(btn.getAttribute('data-re-edit-visit')); });
+    });
+    document.querySelectorAll('#reVisitsBody [data-open-lead]').forEach(function (a) {
+      a.addEventListener('click', function (e) { e.preventDefault(); openReLeadDetail(a.getAttribute('data-open-lead')); });
+    });
+    ttApplyIndeterminate();
+  }
+  ttRenderFns.reVisits = renderVisitsTable;
+
   // -- team table (shared by Sales and Real Estate) --
   function reTeamFiltered() {
     if (!currentData || !currentData.team) return [];
@@ -913,6 +975,11 @@
     ttBindFilter('reLeadsFilterDateTo', 'reLeads', 'dateTo');
     ttBindReset('reLeadsFilterReset', 'reLeads', ['reLeadsSearch', 'reLeadsFilterStatus', 'reLeadsFilterBroker', 'reLeadsFilterSource', 'reLeadsFilterBudgetMin', 'reLeadsFilterBudgetMax', 'reLeadsFilterDateFrom', 'reLeadsFilterDateTo']);
 
+    ttBindSearch('waLeadsSearch', 'waLeads');
+    ttBindFilter('waLeadsFilterInterest', 'waLeads', 'interest');
+    ttBindFilter('waLeadsFilterStatus', 'waLeads', 'status');
+    ttBindReset('waLeadsFilterReset', 'waLeads', ['waLeadsSearch', 'waLeadsFilterInterest', 'waLeadsFilterStatus']);
+
     ttBindSearch('reBrokersSearch', 'reBrokers');
     ttBindFilter('reBrokersFilterStatus', 'reBrokers', 'status');
     ttBindFilter('reBrokersFilterZone', 'reBrokers', 'zone');
@@ -936,6 +1003,13 @@
     ttBindFilter('reAccountingFilterDateFrom', 'reAccounting', 'dateFrom');
     ttBindFilter('reAccountingFilterDateTo', 'reAccounting', 'dateTo');
     ttBindReset('reAccountingFilterReset', 'reAccounting', ['reAccountingSearch', 'reAccountingFilterStatus', 'reAccountingFilterType', 'reAccountingFilterMode', 'reAccountingFilterAmountMin', 'reAccountingFilterAmountMax', 'reAccountingFilterDateFrom', 'reAccountingFilterDateTo']);
+
+    ttBindSearch('reVisitsSearch', 'reVisits');
+    ttBindFilter('reVisitsFilterStatus', 'reVisits', 'status');
+    ttBindFilter('reVisitsFilterBroker', 'reVisits', 'broker');
+    ttBindFilter('reVisitsFilterDateFrom', 'reVisits', 'dateFrom');
+    ttBindFilter('reVisitsFilterDateTo', 'reVisits', 'dateTo');
+    ttBindReset('reVisitsFilterReset', 'reVisits', ['reVisitsSearch', 'reVisitsFilterStatus', 'reVisitsFilterBroker', 'reVisitsFilterDateFrom', 'reVisitsFilterDateTo']);
 
     ttBindSearch('teamSearch', 'team');
     ttBindFilter('teamFilterRole', 'team', 'role');
@@ -1020,11 +1094,356 @@
   }
   ttRenderFns.reports = renderMonthlyReportTable;
 
+  // ---- Real Estate CRM: WhatsApp integration tab ----
+  function loadWhatsAppTab() {
+    if (!accountId) return;
+    activeWaChatLeadId = null;
+    document.getElementById('waChatPanel').style.display = 'none';
+    document.getElementById('waConvosPanel').style.display = '';
+    document.getElementById('waSetupSub').textContent = 'Checking status…';
+    document.getElementById('waConvosSub').textContent = '';
+    document.getElementById('waConvosList').innerHTML = '<div class="empty-note"><span class="spinner"></span> Loading…</div>';
+
+    fetch('/api/accounts/' + accountId + '/re/whatsapp/status')
+      .then(function (res) { return res.json(); })
+      .then(renderWaSetup)
+      .catch(function () { document.getElementById('waSetupSub').textContent = 'Could not load status.'; });
+
+    fetch('/api/accounts/' + accountId + '/re/whatsapp/conversations')
+      .then(function (res) { return res.json(); })
+      .then(renderWaConvos)
+      .catch(function () { document.getElementById('waConvosList').innerHTML = '<div class="empty-note">Could not load conversations.</div>'; });
+
+    renderWaLeadsPanel();
+  }
+
+  document.getElementById('waAddLeadBtn').addEventListener('click', function () { openReLeadModal(null); });
+
+  document.getElementById('waSetupToggleBtn').addEventListener('click', function () {
+    var body = document.getElementById('waSetupBody');
+    var btn = document.getElementById('waSetupToggleBtn');
+    var show = body.style.display === 'none';
+    body.style.display = show ? '' : 'none';
+    btn.textContent = show ? 'Hide setup' : 'Show setup';
+  });
+
+  // -- WhatsApp outreach: leads side panel (filter + multi-select + bulk send) --
+  function waLeadsFiltered() {
+    if (!currentData) return [];
+    var withPhone = currentData.leads.filter(function (l) { return !!l.phone; });
+    return ttApply('waLeads', withPhone, ['name', 'phone', 'propertyInterest'], {
+      interest: function (l, v) { return l.propertyInterest === v; },
+      status: function (l, v) { return l.status === v; }
+    });
+  }
+  ttVisibleIds.waLeads = function () { return waLeadsFiltered().map(function (l) { return l.id; }); };
+
+  function waLeadsSelectionBarHTML() {
+    var n = ttState('waLeads').selected.size;
+    if (!n) return '';
+    return '<div class="tt-selection-bar show">' +
+      '<span>' + n + ' lead' + (n === 1 ? '' : 's') + ' selected</span>' +
+      '<div style="display:flex;gap:8px;">' +
+      '<button class="btn btn-secondary" type="button" id="waBulkSendBtn" style="padding:8px 10px;font-size:11px;">Send outreach template</button>' +
+      '<button class="tt-reset" type="button" data-tt-clear="waLeads">Clear</button>' +
+      '</div></div>';
+  }
+
+  function renderWaLeadsPanel() {
+    if (!currentData) return;
+    var filtered = waLeadsFiltered();
+    var totalWithPhone = currentData.leads.filter(function (l) { return !!l.phone; }).length;
+    var active = ttToolbarActive('waLeads');
+    document.getElementById('waLeadsSub').textContent = filtered.length + (active ? ' of ' + totalWithPhone : '') + (filtered.length === 1 ? ' lead' : ' leads');
+    document.getElementById('waLeadsSelectAllRow').innerHTML = '<label>' + ttHeaderCheckboxHTML('waLeads') + ' Select all</label>';
+    document.getElementById('waLeadsSelectionBar').innerHTML = waLeadsSelectionBarHTML();
+    document.getElementById('waLeadsList').innerHTML = filtered.map(function (l) {
+      return '<div class="wa-lead-row">' + ttRowCheckboxHTML('waLeads', l.id) +
+        '<div class="body" data-open-wa-panel-lead="' + l.id + '">' +
+        '<div class="top"><strong>' + escapeHtmlWa(l.name) + '</strong><span class="phone">' + escapeHtmlWa(l.phone) + '</span></div>' +
+        '<div class="interest">' + escapeHtmlWa(l.propertyInterest || 'No property interest on file') + '</div>' +
+        '</div>' +
+        '<button class="icon-btn" type="button" data-msg-wa-lead="' + l.id + '" title="Message ' + escapeHtmlWa(l.name) + '">' + WA_MSG_ICON + '</button>' +
+        '</div>';
+    }).join('') || '<div class="empty-note" style="padding:16px 4px;">' + (active ? 'No leads match your filters.' : 'No leads with a phone number yet.') + '</div>';
+    ttApplyIndeterminate();
+
+    document.querySelectorAll('[data-open-wa-panel-lead]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        switchView('releads');
+        openReLeadDetail(el.getAttribute('data-open-wa-panel-lead'));
+      });
+    });
+    document.querySelectorAll('[data-msg-wa-lead]').forEach(function (el) {
+      el.addEventListener('click', function (e) {
+        e.stopPropagation();
+        openWaChat(el.getAttribute('data-msg-wa-lead'));
+      });
+    });
+    var bulkBtn = document.getElementById('waBulkSendBtn');
+    if (bulkBtn) bulkBtn.addEventListener('click', sendBulkOutreach);
+  }
+  var WA_MSG_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
+  ttRenderFns.waLeads = renderWaLeadsPanel;
+
+  function sendBulkOutreach() {
+    var ids = Array.from(ttState('waLeads').selected);
+    if (!ids.length) return;
+    if (!window.confirm('Send the WhatsApp outreach template to ' + ids.length + ' lead' + (ids.length === 1 ? '' : 's') + '?')) return;
+    var btn = document.getElementById('waBulkSendBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+    fetch('/api/accounts/' + accountId + '/re/whatsapp/bulk-send-template', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leadIds: ids })
+    }).then(function (res) { return res.json().then(function (d) { return { ok: res.ok, d: d }; }); })
+      .then(function (r) {
+        if (!r.ok) {
+          showToast(r.d.error || 'Bulk send failed.');
+          if (btn) { btn.disabled = false; btn.textContent = 'Send outreach template'; }
+          return;
+        }
+        showToast('Sent to ' + r.d.sent + ' lead' + (r.d.sent === 1 ? '' : 's') + (r.d.failed ? ', ' + r.d.failed + ' failed' : '') + '.');
+        ttState('waLeads').selected.clear();
+        renderWaLeadsPanel();
+        fetch('/api/accounts/' + accountId + '/re/whatsapp/conversations').then(function (res) { return res.json(); }).then(renderWaConvos);
+      })
+      .catch(function () {
+        showToast('Bulk send failed.');
+        if (btn) { btn.disabled = false; btn.textContent = 'Send outreach template'; }
+      });
+  }
+
+  function renderWaSetup(status) {
+    document.getElementById('waCallbackUrl').value = status.callbackUrl || '';
+    document.getElementById('waVerifyToken').value = status.verifyToken || '(not set — add WHATSAPP_VERIFY_TOKEN to .env)';
+    document.getElementById('waTemplateName').textContent = status.templateName ? (status.templateName + ' (' + status.templateLang + ')') : 'Not set — add OUTREACH_TEMPLATE_NAME to .env';
+
+    var banner = document.getElementById('waSetupBanner');
+    if (!status.whatsappConfigured) {
+      banner.className = 'wa-banner warn';
+      banner.style.display = '';
+      banner.textContent = 'WhatsApp isn’t fully configured yet — set WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and WHATSAPP_VERIFY_TOKEN in .env, then restart the server.';
+      document.getElementById('waSetupSub').textContent = 'Not configured';
+    } else if (!status.agentConfigured) {
+      banner.className = 'wa-banner warn';
+      banner.style.display = '';
+      banner.textContent = 'WhatsApp sending/receiving is wired up, but ANTHROPIC_API_KEY isn’t set — inbound messages will be logged but Ina won’t auto-reply.';
+      document.getElementById('waSetupSub').textContent = 'Partially configured';
+    } else if (!status.wiredToThisAccount) {
+      banner.className = 'wa-banner warn';
+      banner.style.display = '';
+      banner.textContent = 'WhatsApp is configured, but inbound messages are currently routed to a different account. Set WHATSAPP_ACCOUNT_ID in .env to this account’s ID if that’s not intended.';
+      document.getElementById('waSetupSub').textContent = 'Connected — different account';
+    } else {
+      banner.className = 'wa-banner ok';
+      banner.style.display = '';
+      banner.textContent = 'Connected. Inbound WhatsApp messages become leads here automatically, and Ina replies using this account’s real inventory.';
+      document.getElementById('waSetupSub').textContent = 'Connected';
+    }
+  }
+
+  function renderWaConvos(threads) {
+    document.getElementById('waConvosSub').textContent = threads.length + (threads.length === 1 ? ' conversation' : ' conversations');
+    document.getElementById('waConvosList').innerHTML = threads.map(function (t) {
+      var preview = (t.lastDirection === 'out' ? 'You: ' : '') + (t.lastMessage || '');
+      return '<div class="wa-convo-row" data-open-wa-lead="' + t.leadId + '">' +
+        '<div class="avatar" style="background:' + avatarColor(t.name) + ';">' + initials(t.name) + '</div>' +
+        '<div class="body"><div class="top"><strong>' + (t.name || t.phone) + '</strong>' +
+        '<span class="status-pill ' + reStatusClass(t.status) + '" style="margin-left:6px;">' + t.status + '</span>' +
+        '<span class="when">' + timeAgo(t.lastMessageAt) + '</span></div>' +
+        '<div class="preview">' + preview + '</div></div></div>';
+    }).join('') || '<div class="empty-note">No WhatsApp conversations yet — once a lead messages your business number, they’ll show up here.</div>';
+    document.querySelectorAll('[data-open-wa-lead]').forEach(function (row) {
+      row.addEventListener('click', function () {
+        openWaChat(row.getAttribute('data-open-wa-lead'));
+      });
+    });
+  }
+
+  // -- WhatsApp outreach: inline chat window (replaces the conversations
+  // list in place, rather than navigating away to the lead detail page) --
+  var activeWaChatLeadId = null;
+
+  function openWaChat(leadId) {
+    var lead = (currentData && currentData.leads || []).find(function (l) { return l.id === leadId; });
+    activeWaChatLeadId = leadId;
+    document.getElementById('waConvosPanel').style.display = 'none';
+    document.getElementById('waChatPanel').style.display = '';
+    var avatar = document.getElementById('waChatAvatar');
+    avatar.style.background = avatarColor(lead ? lead.name : leadId);
+    avatar.textContent = initials(lead ? lead.name : '?');
+    document.getElementById('waChatName').textContent = lead ? lead.name : 'Lead';
+    document.getElementById('waChatPhone').textContent = lead ? lead.phone : '';
+    document.getElementById('waChatInput').value = '';
+    loadWaChatMessages();
+  }
+
+  function closeWaChat() {
+    activeWaChatLeadId = null;
+    document.getElementById('waChatPanel').style.display = 'none';
+    document.getElementById('waConvosPanel').style.display = '';
+    fetch('/api/accounts/' + accountId + '/re/whatsapp/conversations').then(function (res) { return res.json(); }).then(renderWaConvos);
+  }
+
+  function loadWaChatMessages() {
+    var leadId = activeWaChatLeadId;
+    var box = document.getElementById('waChatMessages');
+    box.innerHTML = '<div class="empty-note" style="padding:16px 0;"><span class="spinner"></span></div>';
+    fetch('/api/accounts/' + accountId + '/re/whatsapp/conversations/' + leadId)
+      .then(function (res) { return res.json(); })
+      .then(function (messages) {
+        if (activeWaChatLeadId !== leadId) return;
+        box.innerHTML = messages.map(function (m) {
+          return '<div class="wa-bubble-row ' + m.direction + '"><div class="wa-bubble ' + m.direction + '">' +
+            escapeHtmlWa(m.message) + '<div class="when">' + timeAgo(m.at) + '</div></div></div>';
+        }).join('') || '<div class="empty-note" style="padding:16px 0;">No WhatsApp messages with this lead yet.</div>';
+        box.scrollTop = box.scrollHeight;
+      })
+      .catch(function () { box.innerHTML = '<div class="empty-note" style="padding:16px 0;">Could not load messages.</div>'; });
+  }
+
+  document.getElementById('waChatBack').addEventListener('click', function (e) { e.preventDefault(); closeWaChat(); });
+
+  document.getElementById('waChatSend').addEventListener('click', function () {
+    if (!activeWaChatLeadId) return;
+    var input = document.getElementById('waChatInput');
+    var text = input.value.trim();
+    if (!text) return;
+    var btn = document.getElementById('waChatSend');
+    btn.disabled = true;
+    fetch('/api/accounts/' + accountId + '/re/whatsapp/send', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leadId: activeWaChatLeadId, text: text })
+    }).then(function (res) { return res.json().then(function (d) { return { ok: res.ok, d: d }; }); })
+      .then(function (r) {
+        btn.disabled = false;
+        if (!r.ok) { showToast(r.d.error); return; }
+        input.value = '';
+        loadWaChatMessages();
+      });
+  });
+  document.getElementById('waChatInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') document.getElementById('waChatSend').click();
+  });
+
+  document.getElementById('waChatSendTemplate').addEventListener('click', function () {
+    if (!activeWaChatLeadId) return;
+    var btn = document.getElementById('waChatSendTemplate');
+    btn.disabled = true;
+    fetch('/api/accounts/' + accountId + '/re/whatsapp/send-template', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leadId: activeWaChatLeadId })
+    }).then(function (res) { return res.json().then(function (d) { return { ok: res.ok, d: d }; }); })
+      .then(function (r) {
+        btn.disabled = false;
+        if (!r.ok) { showToast(r.d.error); return; }
+        showToast('Template sent.');
+        loadWaChatMessages();
+      });
+  });
+
+  document.querySelectorAll('[data-copy-target]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var input = document.getElementById(btn.getAttribute('data-copy-target'));
+      if (!input || !input.value) return;
+      navigator.clipboard.writeText(input.value).then(function () {
+        var orig = btn.textContent;
+        btn.textContent = 'Copied';
+        setTimeout(function () { btn.textContent = orig; }, 1500);
+      });
+    });
+  });
+
+  // -- WhatsApp panel on lead detail page --
+  function loadRldWaMessages(leadId) {
+    var box = document.getElementById('rldWaMessages');
+    box.innerHTML = '<div class="empty-note" style="padding:16px 0;"><span class="spinner"></span></div>';
+    fetch('/api/accounts/' + accountId + '/re/whatsapp/conversations/' + leadId)
+      .then(function (res) { return res.json(); })
+      .then(function (messages) {
+        if (!activeDetail || activeDetail.type !== 'lead' || activeDetail.id !== leadId) return;
+        box.innerHTML = messages.map(function (m) {
+          return '<div class="wa-bubble-row ' + m.direction + '"><div class="wa-bubble ' + m.direction + '">' +
+            escapeHtmlWa(m.message) + '<div class="when">' + timeAgo(m.at) + '</div></div></div>';
+        }).join('') || '<div class="empty-note" style="padding:16px 0;">No WhatsApp messages with this lead yet.</div>';
+        box.scrollTop = box.scrollHeight;
+      })
+      .catch(function () { box.innerHTML = '<div class="empty-note" style="padding:16px 0;">Could not load messages.</div>'; });
+  }
+
+  function escapeHtmlWa(s) {
+    return String(s || '').replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  document.getElementById('rldSendTemplateBtn').addEventListener('click', function () {
+    if (!activeDetail || activeDetail.type !== 'lead') return;
+    var btn = document.getElementById('rldSendTemplateBtn');
+    btn.disabled = true;
+    fetch('/api/accounts/' + accountId + '/re/whatsapp/send-template', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leadId: activeDetail.id })
+    }).then(function (res) { return res.json().then(function (d) { return { ok: res.ok, d: d }; }); })
+      .then(function (r) {
+        btn.disabled = false;
+        if (!r.ok) { showToast(r.d.error); return; }
+        showToast('Template sent.');
+        loadRldWaMessages(activeDetail.id);
+      });
+  });
+
+  document.getElementById('rldWaSend').addEventListener('click', function () {
+    if (!activeDetail || activeDetail.type !== 'lead') return;
+    var input = document.getElementById('rldWaInput');
+    var text = input.value.trim();
+    if (!text) return;
+    var btn = document.getElementById('rldWaSend');
+    btn.disabled = true;
+    fetch('/api/accounts/' + accountId + '/re/whatsapp/send', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leadId: activeDetail.id, text: text })
+    }).then(function (res) { return res.json().then(function (d) { return { ok: res.ok, d: d }; }); })
+      .then(function (r) {
+        btn.disabled = false;
+        if (!r.ok) { showToast(r.d.error); return; }
+        input.value = '';
+        loadRldWaMessages(activeDetail.id);
+      });
+  });
+
   // ---- Real Estate CRM: add/edit modals ----
   var RE_LEAD_STATUSES = ['New', 'Contacted', 'Site Visit', 'Negotiation', 'Closed', 'Lost'];
+  var RE_LEAD_SOURCES = ['WhatsApp', 'Email', 'Facebook Ads', 'Instagram Ads', 'Google Ads', 'Property Finder', 'Bayut', 'Dubizzle', '99acres', 'MagicBricks', 'Website Form', 'Referral', 'Walk-in', 'Cold Canvass', 'Excel Import', 'Manual Entry'];
+
+  // Every source bucket into one of a handful of icons so the "where did
+  // this lead come from" view stays scannable even with 16 exact values.
+  var SOURCE_ICONS = {
+    whatsapp: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38a9.9 9.9 0 0 0 4.74 1.21h.01c5.46 0 9.91-4.45 9.91-9.91C21.96 6.45 17.5 2 12.04 2zm5.8 14.02c-.24.68-1.4 1.3-1.93 1.36-.5.06-1.05.28-3.5-.73-2.96-1.22-4.86-4.2-5.01-4.4-.15-.19-1.2-1.6-1.2-3.05s.76-2.16 1.03-2.46c.26-.29.58-.36.77-.36.2 0 .39 0 .56.01.18.01.42-.07.65.5.24.58.82 2.01.9 2.16.07.15.12.32.02.51-.09.19-.14.31-.28.48-.14.17-.29.37-.42.5-.14.14-.28.29-.12.57.16.28.71 1.17 1.52 1.9 1.05.94 1.93 1.23 2.21 1.37.28.14.44.12.6-.07.17-.19.71-.83.9-1.11.19-.28.38-.24.63-.14.26.09 1.66.78 1.94.93.28.14.47.21.53.33.07.12.07.68-.17 1.36z"></path></svg>',
+    email: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="m2 7 10 6 10-6"></path></svg>',
+    ads: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2a1 1 0 0 0 1 1h2l4 4V6L6 10H4a1 1 0 0 0-1 1z"></path><path d="M17 8a4 4 0 0 1 0 8"></path><path d="M21 5a8 8 0 0 1 0 14"></path></svg>',
+    portal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"></path></svg>',
+    referral: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>',
+    walkin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2C20 17.5 12 22 12 22z"></path><circle cx="12" cy="10" r="3"></circle></svg>',
+    import: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M12 18v-6"></path><path d="m9 15 3-3 3 3"></path></svg>'
+  };
+  var SOURCE_ICON_KEY = {
+    'WhatsApp': 'whatsapp', 'Email': 'email',
+    'Facebook Ads': 'ads', 'Instagram Ads': 'ads', 'Google Ads': 'ads',
+    'Property Finder': 'portal', 'Bayut': 'portal', 'Dubizzle': 'portal', '99acres': 'portal', 'MagicBricks': 'portal', 'Website Form': 'portal',
+    'Referral': 'referral',
+    'Walk-in': 'walkin', 'Cold Canvass': 'walkin',
+    'Excel Import': 'import', 'Manual Entry': 'import'
+  };
+  var SOURCE_ICON_CLASS = {
+    whatsapp: 'src-whatsapp', email: 'src-email', ads: 'src-ads', portal: 'src-portal',
+    referral: 'src-referral', walkin: 'src-walkin', import: 'src-import'
+  };
+  function sourceBadge(source) {
+    var label = source || 'Unknown';
+    var key = SOURCE_ICON_KEY[label] || 'portal';
+    var cls = SOURCE_ICON_CLASS[key] || 'src-portal';
+    return '<span class="source-badge ' + cls + '">' + (SOURCE_ICONS[key] || '') + '<span>' + label + '</span></span>';
+  }
   var RE_INVENTORY_STATUSES = ['Available', 'Reserved', 'Negotiation', 'Sold'];
   var RE_ACCOUNTING_STATUSES = ['Pending', 'Received'];
   var RE_BROKER_STATUSES = ['Active', 'Inactive'];
+  var RE_SITE_VISIT_STATUSES = ['Scheduled', 'Completed', 'Cancelled', 'No-show'];
 
   function fillSelect(selectEl, options, selected) {
     selectEl.innerHTML = options.map(function (o) {
@@ -1045,7 +1464,7 @@
     document.getElementById('reLeadPhone').value = l ? (l.phone || '') : '';
     document.getElementById('reLeadEmail').value = l ? (l.email || '') : '';
     document.getElementById('reLeadProperty').value = l ? (l.propertyInterest || '') : '';
-    document.getElementById('reLeadSource').value = l ? (l.source || '') : '';
+    fillSelect(document.getElementById('reLeadSource'), RE_LEAD_SOURCES, l ? l.source : 'Website Form');
     document.getElementById('reLeadBudget').value = l ? (l.budget || 0) : '';
     fillSelect(document.getElementById('reLeadStatus'), RE_LEAD_STATUSES, l ? l.status : 'New');
     var brokerOptions = '<option value="">Unassigned</option>' + (currentData.brokers || []).map(function (b) {
@@ -1102,7 +1521,7 @@
       phone: document.getElementById('reLeadPhone').value.trim(),
       email: document.getElementById('reLeadEmail').value.trim(),
       propertyInterest: document.getElementById('reLeadProperty').value.trim(),
-      source: document.getElementById('reLeadSource').value.trim() || 'Manual entry',
+      source: document.getElementById('reLeadSource').value || 'Manual Entry',
       budget: Number(document.getElementById('reLeadBudget').value) || 0,
       status: document.getElementById('reLeadStatus').value,
       brokerId: document.getElementById('reLeadBroker').value || null,
@@ -1314,6 +1733,74 @@
       });
   });
 
+  // -- site visit modal --
+  var reVisitModal = document.getElementById('reVisitModal');
+  var editingReVisitId = null;
+
+  function openReVisitModal(visitId, presetLeadId) {
+    if (!currentData) return;
+    editingReVisitId = visitId || null;
+    var v = visitId ? (currentData.siteVisits || []).filter(function (x) { return x.id === visitId; })[0] : null;
+    document.getElementById('reVisitModalTitle').textContent = v ? 'Edit visit' : 'Schedule visit';
+
+    var leadId = v ? v.leadId : (presetLeadId || '');
+    document.getElementById('reVisitLead').innerHTML = '<option value="">Choose a lead…</option>' +
+      (currentData.leads || []).map(function (l) {
+        return '<option value="' + l.id + '"' + (l.id === leadId ? ' selected' : '') + '>' + l.name + '</option>';
+      }).join('');
+
+    document.getElementById('reVisitBroker').innerHTML = '<option value="">Unassigned</option>' +
+      (currentData.brokers || []).map(function (b) {
+        return '<option value="' + b.id + '"' + (v && v.brokerId === b.id ? ' selected' : '') + '>' + b.name + '</option>';
+      }).join('');
+
+    document.getElementById('reVisitInventory').innerHTML = '<option value="">No property</option>' +
+      (currentData.inventory || []).map(function (i) {
+        var label = i.projectName + (i.unitNo ? ' ' + i.unitNo : '');
+        return '<option value="' + i.id + '"' + (v && v.inventoryId === i.id ? ' selected' : '') + '>' + label + '</option>';
+      }).join('');
+
+    document.getElementById('reVisitDate').value = v ? toDatetimeLocalValue(v.scheduledAt) : '';
+    fillSelect(document.getElementById('reVisitStatus'), RE_SITE_VISIT_STATUSES, v ? v.status : 'Scheduled');
+    document.getElementById('reVisitNotes').value = v ? (v.notes || '') : '';
+
+    reVisitModal.classList.add('show');
+  }
+
+  document.getElementById('reAddVisitBtn').addEventListener('click', function () { openReVisitModal(null); });
+  document.getElementById('reVisitClose').addEventListener('click', function () { reVisitModal.classList.remove('show'); });
+  reVisitModal.addEventListener('click', function (e) { if (e.target === reVisitModal) reVisitModal.classList.remove('show'); });
+  document.getElementById('reVisitSave').addEventListener('click', function () {
+    var leadId = document.getElementById('reVisitLead').value;
+    if (!leadId) { showToast('Pick a lead for this visit.'); return; }
+    var dateVal = document.getElementById('reVisitDate').value;
+    var payload = {
+      leadId: leadId,
+      brokerId: document.getElementById('reVisitBroker').value || null,
+      inventoryId: document.getElementById('reVisitInventory').value || null,
+      scheduledAt: dateVal ? new Date(dateVal).getTime() : null,
+      status: document.getElementById('reVisitStatus').value,
+      notes: document.getElementById('reVisitNotes').value.trim()
+    };
+    var btn = document.getElementById('reVisitSave');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Saving...';
+    var url = '/api/accounts/' + accountId + '/re/site-visits' + (editingReVisitId ? '/' + editingReVisitId : '');
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function (res) { return res.json().then(function (d) { return { ok: res.ok, d: d }; }); })
+      .then(function (r) {
+        btn.disabled = false;
+        btn.innerHTML = 'Save visit';
+        if (!r.ok) { showToast(r.d.error); return; }
+        reVisitModal.classList.remove('show');
+        showToast(editingReVisitId ? 'Visit updated.' : 'Visit scheduled.');
+        loadAccount();
+      });
+  });
+
   // ---- Real Estate CRM: dashboard charts (hand-drawn inline SVG, no dependency) ----
   var RE_STAGE_COLORS = {
     'New': '#22d3ee', 'Contacted': '#0f6fb0', 'Site Visit': '#c98a1c',
@@ -1465,17 +1952,33 @@
       return '<option value="' + b.id + '"' + (l.brokerId === b.id ? ' selected' : '') + '>' + b.name + '</option>';
     }).join('');
     document.getElementById('rldOwnerSelect').innerHTML = ownerOptions;
-    document.getElementById('rldSource').textContent = l.source || '—';
+    document.getElementById('rldSource').innerHTML = l.source ? sourceBadge(l.source) : '—';
     document.getElementById('rldInterest').textContent = l.propertyInterest || '—';
     document.getElementById('rldFollowup').textContent = l.nextFollowup || '—';
     document.getElementById('rldNationality').textContent = l.nationality || '—';
 
+    var leadVisits = (currentData.siteVisits || []).filter(function (v) { return v.leadId === leadId; })
+      .sort(function (a, b) { return (b.scheduledAt || 0) - (a.scheduledAt || 0); });
+    document.getElementById('rldVisitsList').innerHTML = leadVisits.map(function (v) {
+      return '<div class="mini-lead-row"><div><span style="font-weight:600;color:var(--text);">' + (v.propertyLabel || 'Site visit') + '</span>' +
+        '<div class="meta">' + fmtDateTime(v.scheduledAt) + '</div></div>' +
+        '<span style="display:flex;align-items:center;gap:10px;"><span class="status-pill ' + reStatusClass(v.status) + '">' + v.status + '</span>' +
+        '<button class="link-btn" data-edit-visit="' + v.id + '">Edit</button></span></div>';
+    }).join('') || '<div class="empty-note">No site visits scheduled for this lead yet.</div>';
+    document.querySelectorAll('#rldVisitsList [data-edit-visit]').forEach(function (btn) {
+      btn.addEventListener('click', function () { openReVisitModal(btn.getAttribute('data-edit-visit')); });
+    });
+
     showSection('viewReLeadDetail');
     renderReTimeline('rldTimeline', '/api/accounts/' + accountId + '/re/leads/' + leadId + '/activity', 'No activity on this lead yet.');
+    loadRldWaMessages(leadId);
   }
 
   document.getElementById('rldEditBtn').addEventListener('click', function () {
     if (activeDetail && activeDetail.type === 'lead') openReLeadModal(activeDetail.id);
+  });
+  document.getElementById('rldScheduleVisitBtn').addEventListener('click', function () {
+    if (activeDetail && activeDetail.type === 'lead') openReVisitModal(null, activeDetail.id);
   });
   document.getElementById('rldBack').addEventListener('click', function (e) {
     e.preventDefault(); activeDetail = null; switchView('releads');
@@ -1838,6 +2341,7 @@
     });
     updateInaFloatVisibility(view === 'dashboard');
     if (view === 'reports') loadMonthlyReport();
+    if (view === 'whatsapp') loadWhatsAppTab();
   }
 
   document.querySelectorAll('.side-nav-item').forEach(function (item) {

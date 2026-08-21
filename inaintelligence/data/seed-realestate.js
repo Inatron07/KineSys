@@ -79,7 +79,9 @@ const LAST_NAMES = ['Sharma', 'Verma', 'Gupta', 'Mehta', 'Kapoor', 'Malhotra', '
   'Fernandes', 'D\'Souza', 'Pereira', 'Rodrigues', 'Sequeira', 'Carter', 'Muller', 'Whitfield', 'Al-Sayed', 'Ahmed'];
 const NATIONALITIES = ['Indian', 'Indian', 'Indian', 'Indian', 'Indian', 'Indian', 'Indian', 'Indian', 'NRI (UAE)', 'British', 'American', 'German'];
 const EMAIL_DOMAINS = ['gmail.com', 'yahoo.com', 'outlook.com', 'rediffmail.com', 'hotmail.com'];
-const SOURCES = ['99acres', 'MagicBricks', 'Facebook Ads', 'Instagram Ads', 'Google Ads', 'Referral', 'Website Form', 'Walk-in'];
+// WhatsApp and Email are weighted heaviest — they're the two channels the
+// dashboard's "where did this lead come from" view is built to highlight.
+const SOURCES = ['WhatsApp', 'WhatsApp', 'WhatsApp', 'Email', 'Email', '99acres', 'MagicBricks', 'Facebook Ads', 'Instagram Ads', 'Google Ads', 'Referral', 'Website Form', 'Walk-in', 'Cold Canvass'];
 const PROPERTY_TAGS = {
   'Skyline Heights': ['1BHK', '2BHK', '3BHK'],
   'Palm Villas': ['Villa'],

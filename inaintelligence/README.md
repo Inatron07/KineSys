@@ -204,22 +204,113 @@ remains. On the broker detail page, the "Active leads" and "Closed deals"
 stat boxes are clickable — they filter the "Assigned leads" list below to
 just that bucket (click again, or "Show all", to reset).
 
+### Lead source tagging
+
+Every lead carries a `source` — one of 16 canonical channels (WhatsApp,
+Email, Facebook/Instagram/Google Ads, Property Finder, Bayut, Dubizzle,
+99acres, MagicBricks, Website Form, Referral, Walk-in, Cold Canvass,
+Excel Import, Manual Entry) picked from a dropdown when adding/editing a
+lead rather than typed freely. The Leads table and lead detail page show
+it as a small pill icon-badged by channel group (WhatsApp, Email, Ads,
+Portal, Referral, Walk-in, Import) so the source of every lead is
+scannable at a glance, and the Leads toolbar's Source filter lets you
+isolate just one channel. The seeded demo data is weighted toward
+WhatsApp and Email, matching how leads actually arrive for a brokerage
+that also plugs into a WhatsApp Business number.
+
+### Site Visits
+
+A dedicated "Site Visits" tab (its own `re_site_visits` table, one row
+per scheduled visit, linked to a lead and optionally a broker + specific
+inventory unit) tracks show-unit and secondary-market property tours
+end to end: schedule one from the tab directly or from a lead's detail
+page ("+ Schedule" in the new Site visits panel there), see it in a
+searchable/filterable table (status, broker, date range) alongside every
+other visit, and mark it Scheduled / Completed / Cancelled / No-show as
+it plays out. Every schedule/update is also logged to the lead's
+activity timeline. The Real Estate dashboard's "Upcoming site visits"
+card counts visits still in Scheduled status straight from this table.
+
+### Speed-to-lead SLA automation
+
+Ina watches for leads that are stuck: any lead still in "New" status
+5+ minutes after being assigned to a broker gets automatically
+reassigned to whichever other active broker currently has the lightest
+active-lead load, and the reassignment is logged to that lead's
+activity feed ("Ina reassigned ... — no response within 5 minutes").
+This runs inline every time a Real Estate account's data loads
+(`db.enforceSpeedToLeadSLA`, called at the top of `getAccountDetail`) —
+no cron job needed for the prototype. A lead's assignment clock
+(`re_leads.assigned_at`) resets on every reassignment or manual broker
+change, so a lead can only cycle brokers once per 5-minute window rather
+than thrashing on every page load.
+
+### WhatsApp integration
+
+A "WhatsApp Integration" tab (Real Estate accounts only) makes this app the
+permanent home for the WhatsApp webhook Meta calls — no more re-pasting a new
+ngrok URL every session. The tab shows the Callback URL and Verify token to
+paste into developers.facebook.com → your app → WhatsApp → Configuration →
+Webhook (both copy-to-clipboard), the configured outreach template, and a
+live status banner (not configured / partially configured / connected).
+
+How it works end to end: someone messages your WhatsApp Business number →
+`POST /webhook` finds or creates a matching `re_leads` row (`source =
+'WhatsApp'`), auto-assigned to whichever active broker has the lightest
+load — same routing "Scan leads inbox" uses, so a WhatsApp lead behaves
+exactly like any other lead from the moment it lands (counted on the
+dashboard, picked up by the speed-to-lead SLA if it stalls). The message is
+logged to `re_wa_messages`, then Claude (`data/whatsappAgent.js`, ported from
+the standalone `whatsapp-outreach-agent` prototype) generates a reply using
+two tools: one to search real `re_inventory` listings (never invents a
+property or price) and one to update the lead's `wa_conversation_stage`
+(`in_conversation` / `needs_human` / `booked_viewing` / `not_interested`) —
+reaching `booked_viewing` also moves the lead's pipeline `status` to "Site
+Visit", and `not_interested` moves it to "Lost". Every reply is sent back
+over WhatsApp and logged.
+
+The tab also lists recent conversations (click one to jump to that lead), and
+the lead detail page gets its own WhatsApp panel — full message thread, a
+"Send template" button (for a first message or re-opening a stale
+conversation), and a reply box for freeform text within the 24h window. The
+setup card (Callback URL / Verify token / template) is collapsed behind a
+"Show setup" toggle by default, since it's a one-time config step, not
+something you need in view every time you open the tab.
+
+A dedicated leads panel sits to the left of the tab, listing every lead with
+a phone number on file (search by name/phone, filter by property interest or
+status). Rows use the same SharePoint-style checkbox selection as the other
+tables — pick individual leads, use "Select all" for everything currently
+filtered — and once one or more are selected, a "Send outreach template"
+button appears to fire the configured template at all of them in one go
+(sequentially, to stay under WhatsApp's rate limits), reporting how many
+sent vs. failed (e.g. no phone on file).
+
+Nothing here requires WhatsApp to be configured — leave `WHATSAPP_TOKEN` /
+`WHATSAPP_PHONE_NUMBER_ID` / `WHATSAPP_VERIFY_TOKEN` unset in `.env` and
+every other feature works exactly as before; the tab just shows "not
+configured." Leaving `ANTHROPIC_API_KEY` unset logs inbound messages without
+auto-replying. See `.env.example` for the full list of WhatsApp/Claude
+variables, and the repo-root `render.yaml` for deploying this with a stable
+public URL.
+
 ### Search, filter, and multi-select on every table
 
-Leads, Brokers, Inventory, Accounting, Team, and Monthly Reports each have
-a toolbar above the table: a live search box (matches name/phone/email/
-property/etc. as you type) plus dropdown filters relevant to that table
-(status, broker, source, zone, type, payment mode, role...), and for the
-tables with genuinely numeric/date data — Leads, Inventory, Accounting —
-min/max range filters (budget, price, area, amount, date received/
-transaction date). "Reset" clears everything back to the full list.
-Leads, Brokers, Inventory, Accounting, and Team also get SharePoint-style
-row selection: a checkbox per row plus a "select all" checkbox in the
-header that only selects whatever's currently visible (i.e. respects
-active filters), with a "N selected / Clear selection" bar. All of this
-runs client-side against data already on the page — no extra API calls,
-and everything (`admin.js`'s `tt*` helpers) is one small reusable engine
-rather than six one-off implementations.
+Leads, Brokers, Inventory, Accounting, Site Visits, Team, and Monthly
+Reports each have a toolbar above the table: a live search box (matches
+name/phone/email/property/etc. as you type) plus dropdown filters
+relevant to that table (status, broker, source, zone, type, payment
+mode, role...), and for the tables with genuinely numeric/date data —
+Leads, Inventory, Accounting, Site Visits — min/max or date-range
+filters (budget, price, area, amount, date received/transaction date/
+scheduled date). "Reset" clears everything back to the full list.
+Leads, Brokers, Inventory, Accounting, Site Visits, and Team also get
+SharePoint-style row selection: a checkbox per row plus a "select all"
+checkbox in the header that only selects whatever's currently visible
+(i.e. respects active filters), with a "N selected / Clear selection"
+bar. All of this runs client-side against data already on the page — no
+extra API calls, and everything (`admin.js`'s `tt*` helpers) is one
+small reusable engine rather than seven one-off implementations.
 
 ### Bulk lead import from Excel
 

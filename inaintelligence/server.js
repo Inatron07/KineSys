@@ -8,10 +8,17 @@ const pgSession = require('connect-pg-simple')(session);
 const multer = require('multer');
 const XLSX = require('xlsx');
 const db = require('./data/db');
+const whatsapp = require('./data/whatsappClient');
+const whatsappAgent = require('./data/whatsappAgent');
 
 const app = express();
 const PORT = process.env.PORT || 4100;
 const leadUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+
+// Behind Render's (or any) reverse proxy, req.protocol/req.get('host') only
+// report correctly if Express trusts the X-Forwarded-* headers — needed so
+// the WhatsApp tab's Callback URL shows https:// instead of http://.
+app.set('trust proxy', 1);
 
 app.use(express.json());
 app.use(session({
@@ -294,6 +301,20 @@ app.post('/api/accounts/:id/re/accounting/:txnId', requireAuth, asyncRoute(async
   res.json({ ok: true });
 }));
 
+app.post('/api/accounts/:id/re/site-visits', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const result = await db.addRESiteVisit(req.params.id, req.body || {}, actorNameFor(req.session.auth));
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ ok: true, id: result.id });
+}));
+
+app.post('/api/accounts/:id/re/site-visits/:visitId', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const result = await db.updateRESiteVisit(req.params.id, req.params.visitId, req.body || {}, actorNameFor(req.session.auth));
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ ok: true });
+}));
+
 // Bulk lead import from an uploaded .xlsx/.xls/.csv file. Accepts a
 // loosely-matched header row (case/spacing insensitive) so a real
 // export from another CRM or a manually-built sheet both work.
@@ -351,6 +372,154 @@ app.get('/api/accounts/:id/re/monthly-report', requireAuth, asyncRoute(async (re
   if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
   const report = await db.getREMonthlyReport(req.params.id);
   res.json(report);
+}));
+
+// ---------- Real Estate CRM: WhatsApp integration ----------
+// The webhook itself (GET/POST /webhook) is intentionally public — Meta
+// calls it directly, with no session. It's not scoped to :id in the URL;
+// db.resolveWhatsAppAccountId() figures out which account owns it (either
+// the one real_estate account, or WHATSAPP_ACCOUNT_ID if more than one
+// exists). Everything else below is a normal authenticated account route.
+
+app.get('/webhook', (req, res) => {
+  const challenge = whatsapp.verifyWebhookChallenge(req.query);
+  if (challenge) {
+    console.log('[webhook] verification succeeded');
+    return res.status(200).send(challenge);
+  }
+  console.warn('[webhook] verification failed — check WHATSAPP_VERIFY_TOKEN matches the Meta dashboard');
+  return res.sendStatus(403);
+});
+
+app.post('/webhook', (req, res) => {
+  // Always ack fast — WhatsApp retries aggressively if you don't 200 quickly.
+  res.sendStatus(200);
+  const incoming = whatsapp.parseIncomingMessage(req.body);
+  if (!incoming) return; // status update (delivered/read), not a user message
+  handleIncomingWhatsAppMessage(incoming).catch((err) => {
+    console.error('[webhook] error handling incoming message', err);
+  });
+});
+
+async function handleIncomingWhatsAppMessage(incoming) {
+  const accountId = await db.resolveWhatsAppAccountId();
+  if (!accountId) {
+    console.warn('[webhook] no WhatsApp-enabled Real Estate account found — set WHATSAPP_ACCOUNT_ID in .env if you run more than one.');
+    return;
+  }
+
+  const lead = await db.findOrCreateREWALead(accountId, incoming.from, incoming.name);
+  await db.addREWAMessage(accountId, lead.id, 'in', incoming.text);
+
+  if (!whatsappAgent.isConfigured()) {
+    console.warn('[webhook] ANTHROPIC_API_KEY not set — message logged but no auto-reply sent.');
+    return;
+  }
+
+  const history = await db.getREWAConversation(accountId, lead.id, 20);
+  // history already includes the message we just logged — drop it, since
+  // generateReply takes prior history + the current message separately.
+  const { replyText, stageUpdate } = await whatsappAgent.generateReply(accountId, lead, history.slice(0, -1), incoming.text);
+
+  if (replyText) {
+    await whatsapp.sendTextMessage(incoming.from, replyText);
+    await db.addREWAMessage(accountId, lead.id, 'out', replyText);
+  }
+  if (stageUpdate && stageUpdate.stage) {
+    await db.applyREWAAgentUpdate(accountId, lead.id, stageUpdate);
+  }
+}
+
+app.get('/api/accounts/:id/re/whatsapp/status', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const resolvedAccountId = await db.resolveWhatsAppAccountId();
+  const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+  res.json({
+    whatsappConfigured: whatsapp.isConfigured(),
+    agentConfigured: whatsappAgent.isConfigured(),
+    wiredToThisAccount: !!resolvedAccountId && resolvedAccountId === req.params.id,
+    resolvedAccountId: resolvedAccountId || null,
+    callbackUrl: `${base}/webhook`,
+    verifyToken: process.env.WHATSAPP_VERIFY_TOKEN || null,
+    templateName: process.env.OUTREACH_TEMPLATE_NAME || null,
+    templateLang: process.env.OUTREACH_TEMPLATE_LANG || 'en',
+  });
+}));
+
+app.get('/api/accounts/:id/re/whatsapp/conversations', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const threads = await db.getRecentREWAThreads(req.params.id);
+  res.json(threads);
+}));
+
+app.get('/api/accounts/:id/re/whatsapp/conversations/:leadId', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const messages = await db.getREWAConversation(req.params.id, req.params.leadId, 100);
+  res.json(messages);
+}));
+
+app.post('/api/accounts/:id/re/whatsapp/send', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const { leadId, text } = req.body || {};
+  if (!leadId || !text || !text.trim()) return res.status(400).json({ error: 'leadId and text are required.' });
+  const lead = await db.getRELeadPhone(req.params.id, leadId);
+  if (!lead || !lead.phone) return res.status(400).json({ error: 'This lead has no phone number on file.' });
+  try {
+    await whatsapp.sendTextMessage(lead.phone, text.trim());
+    await db.addREWAMessage(req.params.id, leadId, 'out', text.trim());
+    res.json({ ok: true });
+  } catch (err) {
+    const detail = err.response?.data?.error?.message || err.message;
+    res.status(500).json({ error: detail });
+  }
+}));
+
+app.post('/api/accounts/:id/re/whatsapp/send-template', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const { leadId } = req.body || {};
+  if (!leadId) return res.status(400).json({ error: 'leadId is required.' });
+  const lead = await db.getRELeadPhone(req.params.id, leadId);
+  if (!lead || !lead.phone) return res.status(400).json({ error: 'This lead has no phone number on file.' });
+  if (!process.env.OUTREACH_TEMPLATE_NAME) return res.status(400).json({ error: 'OUTREACH_TEMPLATE_NAME is not set in .env.' });
+  const firstName = (lead.name || 'there').split(' ')[0];
+  try {
+    await whatsapp.sendTemplateMessage(lead.phone, process.env.OUTREACH_TEMPLATE_NAME, process.env.OUTREACH_TEMPLATE_LANG || 'en', [firstName]);
+    await db.addREWAMessage(req.params.id, leadId, 'out', `[template: ${process.env.OUTREACH_TEMPLATE_NAME}] outreach message sent to ${firstName}`);
+    res.json({ ok: true });
+  } catch (err) {
+    const detail = err.response?.data?.error?.message || err.message;
+    res.status(500).json({ error: detail });
+  }
+}));
+
+app.post('/api/accounts/:id/re/whatsapp/bulk-send-template', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const { leadIds } = req.body || {};
+  if (!Array.isArray(leadIds) || !leadIds.length) return res.status(400).json({ error: 'leadIds (non-empty array) is required.' });
+  if (!process.env.OUTREACH_TEMPLATE_NAME) return res.status(400).json({ error: 'OUTREACH_TEMPLATE_NAME is not set in .env.' });
+
+  const results = [];
+  // Sequential, not Promise.all — WhatsApp's API rate-limits bursts of
+  // outbound template sends, so we go one at a time rather than firing a
+  // dozen requests at once.
+  for (const leadId of leadIds) {
+    const lead = await db.getRELeadPhone(req.params.id, leadId);
+    if (!lead || !lead.phone) {
+      results.push({ leadId, ok: false, error: 'No phone number on file.' });
+      continue;
+    }
+    const firstName = (lead.name || 'there').split(' ')[0];
+    try {
+      await whatsapp.sendTemplateMessage(lead.phone, process.env.OUTREACH_TEMPLATE_NAME, process.env.OUTREACH_TEMPLATE_LANG || 'en', [firstName]);
+      await db.addREWAMessage(req.params.id, leadId, 'out', `[template: ${process.env.OUTREACH_TEMPLATE_NAME}] outreach message sent to ${firstName}`);
+      results.push({ leadId, ok: true });
+    } catch (err) {
+      results.push({ leadId, ok: false, error: err.response?.data?.error?.message || err.message });
+    }
+  }
+
+  const sent = results.filter((r) => r.ok).length;
+  res.json({ sent, failed: results.length - sent, results });
 }));
 
 // ---------- team management ----------

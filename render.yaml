@@ -1,0 +1,54 @@
+# Render Blueprint for the InaIntelligence app (KineSys admin dashboards +
+# Real Estate CRM + WhatsApp integration). Deploy: on render.com, "New +" ->
+# "Blueprint", point it at this repo, and Render reads this file to create
+# the service below.
+#
+# Everything with `sync: false` is a secret Render will prompt you to paste
+# in during setup (or you can add/edit them later under the service's
+# Environment tab) — they are NOT stored in this file or in git.
+#
+# Render sets PORT itself for web services; server.js already reads
+# process.env.PORT, so it isn't listed here.
+
+services:
+  - type: web
+    name: kinesys-inaintelligence
+    runtime: node
+    plan: starter
+    rootDir: inaintelligence
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+
+      # WhatsApp integration — leave unset to run without it.
+      - key: WHATSAPP_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_VERIFY_TOKEN
+        sync: false
+      - key: OUTREACH_TEMPLATE_NAME
+        sync: false
+      - key: OUTREACH_TEMPLATE_LANG
+        value: en
+      - key: WHATSAPP_ACCOUNT_ID
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+
+      # Claude (WhatsApp auto-reply agent) — leave ANTHROPIC_API_KEY unset
+      # to log inbound messages without an automated reply.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CLAUDE_MODEL
+        value: claude-sonnet-4-5-20250929
+      - key: AGENT_NAME
+        value: Zara
+      - key: BUSINESS_NAME
+        value: KineSys
+      - key: BUSINESS_CONTEXT
+        value: "KineSys helps clients buy and rent residential properties across the UAE, working with buyers, renters, and investors, and arranging site visits with our team."

@@ -175,9 +175,9 @@ const MODULES = {
 
           const leadId = id('re_lead');
           await client.query(
-            `INSERT INTO re_leads (id, account_id, name, source, property_interest, budget, status, broker_id, date_received, next_followup, remarks)
-             VALUES ($1,$2,$3,$4,$5,$6,'New',$7, CURRENT_DATE, CURRENT_DATE + 3, 'Auto-captured from portal')`,
-            [leadId, accountId, name, source, project, budget, broker ? broker.id : null]
+            `INSERT INTO re_leads (id, account_id, name, source, property_interest, budget, status, broker_id, date_received, next_followup, remarks, assigned_at)
+             VALUES ($1,$2,$3,$4,$5,$6,'New',$7, CURRENT_DATE, CURRENT_DATE + 3, 'Auto-captured from portal', $8)`,
+            [leadId, accountId, name, source, project, budget, broker ? broker.id : null, broker ? new Date() : null]
           );
           if (broker) {
             await client.query('UPDATE re_brokers SET active_leads = active_leads + 1 WHERE id=$1', [broker.id]);
@@ -427,6 +427,12 @@ async function getAccountDetail(accountId) {
   }
 
   if (module.kind === 'real_estate') {
+    // Speed-to-lead SLA: any lead still sitting untouched ("New") 5+ minutes
+    // after being assigned gets auto-reassigned to whichever active broker
+    // currently has the lightest active load. Runs inline on every read of
+    // this account so the effect is visible immediately without a cron job.
+    await enforceSpeedToLeadSLA(accountId);
+
     const { rows: brokers } = await pool.query('SELECT * FROM re_brokers WHERE account_id=$1 ORDER BY revenue_achieved DESC', [accountId]);
     const { rows: leads } = await pool.query(
       `SELECT l.*, b.name AS broker_name FROM re_leads l LEFT JOIN re_brokers b ON b.id = l.broker_id
@@ -435,6 +441,15 @@ async function getAccountDetail(accountId) {
     );
     const { rows: inventory } = await pool.query('SELECT * FROM re_inventory WHERE account_id=$1 ORDER BY created_at DESC', [accountId]);
     const { rows: accounting } = await pool.query('SELECT * FROM re_accounting WHERE account_id=$1 ORDER BY txn_date DESC NULLS LAST, created_at DESC', [accountId]);
+    const { rows: siteVisits } = await pool.query(
+      `SELECT v.*, l.name AS lead_name, b.name AS broker_name, i.project_name, i.unit_no
+       FROM re_site_visits v
+       LEFT JOIN re_leads l ON l.id = v.lead_id
+       LEFT JOIN re_brokers b ON b.id = v.broker_id
+       LEFT JOIN re_inventory i ON i.id = v.inventory_id
+       WHERE v.account_id=$1 ORDER BY v.scheduled_at ASC NULLS LAST, v.created_at DESC LIMIT 300`,
+      [accountId]
+    );
     // Active/closed lead counts per broker are always derived live from the
     // actual re_leads rows (not the static re_brokers.active_leads/closed_deals
     // columns) so what a broker's stat boxes show always matches what's really
@@ -452,7 +467,7 @@ async function getAccountDetail(accountId) {
       `SELECT
          (SELECT count(*) FROM re_leads WHERE account_id=$1 AND date_received = CURRENT_DATE) AS new_leads_today,
          (SELECT count(*) FROM re_leads WHERE account_id=$1 AND broker_id IS NULL) AS unassigned,
-         (SELECT count(*) FROM re_leads WHERE account_id=$1 AND status='Site Visit') AS site_visits,
+         (SELECT count(*) FROM re_site_visits WHERE account_id=$1 AND status='Scheduled') AS site_visits,
          (SELECT count(*) FROM re_brokers WHERE account_id=$1 AND status='Active') AS active_brokers`,
       [accountId]
     );
@@ -495,6 +510,12 @@ async function getAccountDetail(accountId) {
         id: t.id, date: t.txn_date, clientName: t.client_name, property: t.property,
         amount: Number(t.amount) || 0, type: t.type, brokerName: t.broker_name,
         paymentMode: t.payment_mode, status: t.status
+      })),
+      siteVisits: siteVisits.map((v) => ({
+        id: v.id, leadId: v.lead_id, leadName: v.lead_name, brokerId: v.broker_id, brokerName: v.broker_name,
+        inventoryId: v.inventory_id, propertyLabel: v.project_name ? (v.project_name + (v.unit_no ? ' ' + v.unit_no : '')) : null,
+        scheduledAt: v.scheduled_at ? new Date(v.scheduled_at).getTime() : null,
+        status: v.status, notes: v.notes, createdAt: new Date(v.created_at).getTime()
       }))
     });
   }
@@ -650,14 +671,67 @@ const RE_INVENTORY_STATUSES = ['Available', 'Reserved', 'Negotiation', 'Sold'];
 const RE_ACCOUNTING_STATUSES = ['Pending', 'Received'];
 const RE_BROKER_STATUSES = ['Active', 'Inactive'];
 
+// Speed-to-lead SLA enforcement: reassigns any lead still in 'New' status
+// whose current broker assignment has gone stale (5+ minutes with no stage
+// change) to whichever other active broker currently carries the lightest
+// active load. assigned_at resets on every reassignment so a lead can only
+// cycle brokers once per 5-minute window, not thrash on every read.
+const SPEED_TO_LEAD_SLA_MINUTES = 5;
+
+async function enforceSpeedToLeadSLA(accountId) {
+  const { rows: stale } = await pool.query(
+    `SELECT id, name, broker_id FROM re_leads
+     WHERE account_id=$1 AND status='New' AND broker_id IS NOT NULL
+       AND assigned_at IS NOT NULL AND assigned_at < now() - interval '${SPEED_TO_LEAD_SLA_MINUTES} minutes'`,
+    [accountId]
+  );
+  if (!stale.length) return { reassigned: 0 };
+
+  const { rows: brokers } = await pool.query(
+    'SELECT id, name FROM re_brokers WHERE account_id=$1 AND status=\'Active\'',
+    [accountId]
+  );
+  if (brokers.length < 2) return { reassigned: 0 };
+
+  const { rows: loadRows } = await pool.query(
+    `SELECT broker_id, count(*) AS n FROM re_leads
+     WHERE account_id=$1 AND broker_id IS NOT NULL AND status NOT IN ('Closed','Lost')
+     GROUP BY broker_id`,
+    [accountId]
+  );
+  const loadByBroker = {};
+  brokers.forEach((b) => { loadByBroker[b.id] = 0; });
+  loadRows.forEach((r) => { loadByBroker[r.broker_id] = Number(r.n) || 0; });
+
+  let reassigned = 0;
+  for (const lead of stale) {
+    const candidates = brokers.filter((b) => b.id !== lead.broker_id);
+    if (!candidates.length) continue;
+    candidates.sort((a, b) => (loadByBroker[a.id] || 0) - (loadByBroker[b.id] || 0));
+    const newBroker = candidates[0];
+    const oldBroker = brokers.find((b) => b.id === lead.broker_id);
+
+    await pool.query('UPDATE re_leads SET broker_id=$1, assigned_at=now() WHERE id=$2', [newBroker.id, lead.id]);
+    loadByBroker[newBroker.id] = (loadByBroker[newBroker.id] || 0) + 1;
+    if (oldBroker) loadByBroker[oldBroker.id] = Math.max(0, (loadByBroker[oldBroker.id] || 0) - 1);
+
+    await pool.query(
+      'INSERT INTO activity (id, account_id, text, actor_name, re_lead_id) VALUES ($1,$2,$3,$4,$5)',
+      [id('act'), accountId, `Ina reassigned ${lead.name} from ${oldBroker ? oldBroker.name : 'a broker'} to ${newBroker.name} — no response within ${SPEED_TO_LEAD_SLA_MINUTES} minutes (speed-to-lead SLA).`, 'Ina', lead.id]
+    );
+    reassigned++;
+  }
+  return { reassigned };
+}
+
 async function addRELead(accountId, { name, phone, email, source, propertyInterest, budget, status, brokerId, nextFollowup, remarks, nationality }, actorName) {
   if (!name) return { error: 'Lead name is required.' };
   const leadStatus = RE_LEAD_STATUSES.includes(status) ? status : 'New';
   const leadId = id('re_lead');
   await pool.query(
-    `INSERT INTO re_leads (id, account_id, name, phone, email, source, property_interest, budget, status, broker_id, date_received, next_followup, remarks, nationality)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, CURRENT_DATE, $11, $12, $13)`,
-    [leadId, accountId, name, phone || null, email || null, source || 'Manual entry', propertyInterest || null, Number(budget) || 0, leadStatus, brokerId || null, nextFollowup || null, remarks || null, nationality || null]
+    `INSERT INTO re_leads (id, account_id, name, phone, email, source, property_interest, budget, status, broker_id, date_received, next_followup, remarks, nationality, assigned_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, CURRENT_DATE, $11, $12, $13, $14)`,
+    [leadId, accountId, name, phone || null, email || null, source || 'Manual Entry', propertyInterest || null, Number(budget) || 0, leadStatus, brokerId || null, nextFollowup || null, remarks || null, nationality || null, brokerId ? new Date() : null]
   );
   await pool.query(
     'INSERT INTO activity (id, account_id, text, actor_name, re_lead_id) VALUES ($1,$2,$3,$4,$5)',
@@ -671,11 +745,13 @@ async function updateRELead(accountId, leadId, { name, phone, email, source, pro
   if (!rows[0]) return { error: 'Lead not found.' };
   if (!name) return { error: 'Lead name is required.' };
   const leadStatus = RE_LEAD_STATUSES.includes(status) ? status : rows[0].status;
+  const newBrokerId = brokerId || null;
+  const brokerChanged = newBrokerId !== rows[0].broker_id;
 
   await pool.query(
-    `UPDATE re_leads SET name=$1, phone=$2, email=$3, source=$4, property_interest=$5, budget=$6, status=$7, broker_id=$8, next_followup=$9, remarks=$10, nationality=$11
+    `UPDATE re_leads SET name=$1, phone=$2, email=$3, source=$4, property_interest=$5, budget=$6, status=$7, broker_id=$8, next_followup=$9, remarks=$10, nationality=$11${brokerChanged ? ', assigned_at=' + (newBrokerId ? 'now()' : 'NULL') : ''}
      WHERE id=$12`,
-    [name, phone || null, email || null, source || null, propertyInterest || null, Number(budget) || 0, leadStatus, brokerId || null, nextFollowup || null, remarks || null, nationality || null, leadId]
+    [name, phone || null, email || null, source || null, propertyInterest || null, Number(budget) || 0, leadStatus, newBrokerId, nextFollowup || null, remarks || null, nationality || null, leadId]
   );
   const note = rows[0].status !== leadStatus ? ` — stage ${rows[0].status} → ${leadStatus}` : '';
   await pool.query(
@@ -726,10 +802,10 @@ async function bulkAddRELeads(accountId, rows, actorName) {
     const status = RE_LEAD_STATUSES.includes(r.status) ? r.status : 'New';
     const leadId = id('re_lead');
     await pool.query(
-      `INSERT INTO re_leads (id, account_id, name, phone, email, source, property_interest, budget, status, broker_id, date_received, next_followup, remarks, nationality)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, COALESCE($11::date, CURRENT_DATE), $12, $13, $14)`,
-      [leadId, accountId, name, r.phone || null, r.email || null, r.source || 'Excel import', r.propertyInterest || null,
-       Number(r.budget) || 0, status, brokerId, r.dateReceived || null, r.nextFollowup || null, r.remarks || null, r.nationality || null]
+      `INSERT INTO re_leads (id, account_id, name, phone, email, source, property_interest, budget, status, broker_id, date_received, next_followup, remarks, nationality, assigned_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, COALESCE($11::date, CURRENT_DATE), $12, $13, $14, $15)`,
+      [leadId, accountId, name, r.phone || null, r.email || null, r.source || 'Excel Import', r.propertyInterest || null,
+       Number(r.budget) || 0, status, brokerId, r.dateReceived || null, r.nextFollowup || null, r.remarks || null, r.nationality || null, brokerId ? new Date() : null]
     );
     added++;
   }
@@ -868,6 +944,198 @@ async function updateREAccounting(accountId, txnId, { txnDate, clientName, prope
     [id('act'), accountId, `${actorName || 'Someone'} updated the ${clientName} transaction${note}.`, actorName || null]
   );
   return { ok: true };
+}
+
+// ---------- Real Estate CRM: site visits ----------
+const RE_SITE_VISIT_STATUSES = ['Scheduled', 'Completed', 'Cancelled', 'No-show'];
+
+async function addRESiteVisit(accountId, { leadId, brokerId, inventoryId, scheduledAt, status, notes }, actorName) {
+  if (!leadId) return { error: 'A lead is required to schedule a site visit.' };
+  const { rows: leadRows } = await pool.query('SELECT name FROM re_leads WHERE id=$1 AND account_id=$2', [leadId, accountId]);
+  if (!leadRows[0]) return { error: 'Lead not found.' };
+  const visitStatus = RE_SITE_VISIT_STATUSES.includes(status) ? status : 'Scheduled';
+  const visitId = id('re_visit');
+  await pool.query(
+    `INSERT INTO re_site_visits (id, account_id, lead_id, broker_id, inventory_id, scheduled_at, status, notes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    [visitId, accountId, leadId, brokerId || null, inventoryId || null, scheduledAt || null, visitStatus, notes || null]
+  );
+  await pool.query(
+    'INSERT INTO activity (id, account_id, text, actor_name, re_lead_id) VALUES ($1,$2,$3,$4,$5)',
+    [id('act'), accountId, `${actorName || 'Someone'} scheduled a site visit for ${leadRows[0].name}${scheduledAt ? ' on ' + new Date(scheduledAt).toLocaleString() : ''}.`, actorName || null, leadId]
+  );
+  return { ok: true, id: visitId };
+}
+
+async function updateRESiteVisit(accountId, visitId, { leadId, brokerId, inventoryId, scheduledAt, status, notes }, actorName) {
+  const { rows } = await pool.query('SELECT * FROM re_site_visits WHERE id=$1 AND account_id=$2', [visitId, accountId]);
+  if (!rows[0]) return { error: 'Site visit not found.' };
+  if (!leadId) return { error: 'A lead is required to schedule a site visit.' };
+  const { rows: leadRows } = await pool.query('SELECT name FROM re_leads WHERE id=$1 AND account_id=$2', [leadId, accountId]);
+  if (!leadRows[0]) return { error: 'Lead not found.' };
+  const visitStatus = RE_SITE_VISIT_STATUSES.includes(status) ? status : rows[0].status;
+
+  await pool.query(
+    `UPDATE re_site_visits SET lead_id=$1, broker_id=$2, inventory_id=$3, scheduled_at=$4, status=$5, notes=$6 WHERE id=$7`,
+    [leadId, brokerId || null, inventoryId || null, scheduledAt || null, visitStatus, notes || null, visitId]
+  );
+  const note = rows[0].status !== visitStatus ? ` — status ${rows[0].status} → ${visitStatus}` : '';
+  await pool.query(
+    'INSERT INTO activity (id, account_id, text, actor_name, re_lead_id) VALUES ($1,$2,$3,$4,$5)',
+    [id('act'), accountId, `${actorName || 'Someone'} updated ${leadRows[0].name}'s site visit${note}.`, actorName || null, leadId]
+  );
+  return { ok: true };
+}
+
+// ---------- Real Estate CRM: WhatsApp integration ----------
+// Inbound WhatsApp messages either match an existing re_leads row by phone,
+// or create a new one (source='WhatsApp') and auto-assign it to whichever
+// active broker currently has the lightest load — the same routing scan_inbox
+// uses, so a WhatsApp-sourced lead behaves exactly like any other lead from
+// the moment it lands: shows up in Leads, counts in dashboard stats, gets
+// picked up by the speed-to-lead SLA if it stalls.
+function normalizeWAPhone(phone) {
+  return String(phone || '').replace(/\D/g, '');
+}
+
+async function findOrCreateREWALead(accountId, phone, name) {
+  const cleanPhone = normalizeWAPhone(phone);
+  const { rows } = await pool.query(
+    'SELECT * FROM re_leads WHERE account_id=$1 AND phone=$2 LIMIT 1',
+    [accountId, cleanPhone]
+  );
+  if (rows[0]) return rows[0];
+
+  const { rows: brokers } = await pool.query(
+    `SELECT b.id, b.name FROM re_brokers b WHERE b.account_id=$1 AND b.status='Active'
+     ORDER BY (SELECT count(*) FROM re_leads WHERE broker_id=b.id AND status NOT IN ('Closed','Lost')) ASC
+     LIMIT 1`,
+    [accountId]
+  );
+  const broker = brokers[0] || null;
+
+  const leadId = id('re_lead');
+  await pool.query(
+    `INSERT INTO re_leads (id, account_id, name, phone, source, status, broker_id, date_received, remarks, assigned_at)
+     VALUES ($1,$2,$3,$4,'WhatsApp','New',$5, CURRENT_DATE, 'Inbound WhatsApp contact', $6)`,
+    [leadId, accountId, name || 'WhatsApp lead', cleanPhone, broker ? broker.id : null, broker ? new Date() : null]
+  );
+  await pool.query(
+    'INSERT INTO activity (id, account_id, text, actor_name, re_lead_id) VALUES ($1,$2,$3,$4,$5)',
+    [id('act'), accountId, `New WhatsApp lead: ${name || cleanPhone}${broker ? `, auto-assigned to ${broker.name}` : ' — no active broker available to assign'}.`, 'Ina', leadId]
+  );
+  const { rows: created } = await pool.query('SELECT * FROM re_leads WHERE id=$1', [leadId]);
+  return created[0];
+}
+
+async function addREWAMessage(accountId, leadId, direction, message) {
+  await pool.query(
+    'INSERT INTO re_wa_messages (id, account_id, lead_id, direction, message) VALUES ($1,$2,$3,$4,$5)',
+    [id('wa_msg'), accountId, leadId, direction, message]
+  );
+}
+
+async function getREWAConversation(accountId, leadId, limit) {
+  const { rows } = await pool.query(
+    `SELECT direction, message, created_at FROM re_wa_messages
+     WHERE account_id=$1 AND lead_id=$2 ORDER BY created_at DESC LIMIT $3`,
+    [accountId, leadId, limit || 50]
+  );
+  return rows.reverse().map((r) => ({ direction: r.direction, message: r.message, at: new Date(r.created_at).getTime() }));
+}
+
+/** Recent WhatsApp threads for the WhatsApp Integration tab's inbox — one row per lead with a WA message, newest first. */
+async function getRecentREWAThreads(accountId, limit) {
+  const { rows } = await pool.query(
+    `SELECT l.id AS lead_id, l.name, l.phone, l.status, l.wa_conversation_stage,
+            m.message AS last_message, m.direction AS last_direction, m.created_at AS last_message_at
+     FROM re_leads l
+     JOIN LATERAL (
+       SELECT message, direction, created_at FROM re_wa_messages
+       WHERE lead_id = l.id ORDER BY created_at DESC LIMIT 1
+     ) m ON true
+     WHERE l.account_id=$1
+     ORDER BY m.created_at DESC
+     LIMIT $2`,
+    [accountId, limit || 50]
+  );
+  return rows.map((r) => ({
+    leadId: r.lead_id, name: r.name, phone: r.phone, status: r.status, stage: r.wa_conversation_stage,
+    lastMessage: r.last_message, lastDirection: r.last_direction, lastMessageAt: new Date(r.last_message_at).getTime()
+  }));
+}
+
+/** Applies the Claude agent's tool call: bumps wa_conversation_stage, nudges the formal pipeline status at key moments, and logs the change. */
+async function applyREWAAgentUpdate(accountId, leadId, { stage, notes }) {
+  const { rows } = await pool.query(
+    'SELECT name, status, wa_conversation_stage FROM re_leads WHERE id=$1 AND account_id=$2',
+    [leadId, accountId]
+  );
+  if (!rows[0]) return;
+  const lead = rows[0];
+  const STAGE_TO_STATUS = { booked_viewing: 'Site Visit', not_interested: 'Lost' };
+  const newStatus = STAGE_TO_STATUS[stage] || lead.status;
+
+  await pool.query(
+    `UPDATE re_leads SET wa_conversation_stage=$1, status=$2,
+       remarks = CASE WHEN $3::text IS NOT NULL THEN COALESCE(remarks || E'\n', '') || $3 ELSE remarks END
+     WHERE id=$4 AND account_id=$5`,
+    [stage || null, newStatus, notes || null, leadId, accountId]
+  );
+
+  if (stage && stage !== lead.wa_conversation_stage) {
+    const label = {
+      in_conversation: 'is now in conversation', needs_human: 'needs human follow-up',
+      booked_viewing: 'booked a viewing', not_interested: 'is not interested',
+    }[stage] || `moved to ${stage}`;
+    await pool.query(
+      'INSERT INTO activity (id, account_id, text, actor_name, re_lead_id) VALUES ($1,$2,$3,$4,$5)',
+      [id('act'), accountId, `Ina (WhatsApp): ${lead.name} ${label}.`, 'Ina', leadId]
+    );
+  }
+}
+
+async function getRELeadPhone(accountId, leadId) {
+  const { rows } = await pool.query('SELECT name, phone FROM re_leads WHERE id=$1 AND account_id=$2', [leadId, accountId]);
+  return rows[0] || null;
+}
+
+/**
+ * Which account inbound WhatsApp messages get attached to. Set
+ * WHATSAPP_ACCOUNT_ID in .env to pin it explicitly (needed once more than
+ * one real_estate account exists); until then this auto-detects the single
+ * real_estate account, so there's nothing to configure for the common case
+ * of one Real Estate CRM account (KineSys) using WhatsApp.
+ */
+async function resolveWhatsAppAccountId() {
+  if (process.env.WHATSAPP_ACCOUNT_ID) return process.env.WHATSAPP_ACCOUNT_ID;
+  const { rows } = await pool.query(`SELECT id FROM accounts WHERE module_kind='real_estate' ORDER BY starts_at ASC LIMIT 2`);
+  if (rows.length === 1) return rows[0].id;
+  return null; // none found, or more than one and no WHATSAPP_ACCOUNT_ID override set
+}
+
+/**
+ * Searches available inventory for the WhatsApp agent's search_properties
+ * tool — real listings from the same re_inventory table the Inventory tab
+ * shows, so the agent can never invent a property or price.
+ */
+async function searchREInventory(accountId, { area, property_type, min_price, max_price, min_bedrooms } = {}) {
+  const conditions = [`account_id = $1`, `status = 'Available'`];
+  const values = [accountId];
+
+  if (area) { values.push(`%${area}%`); conditions.push(`location ILIKE $${values.length}`); }
+  if (property_type) { values.push(`%${property_type}%`); conditions.push(`type ILIKE $${values.length}`); }
+  if (min_price != null) { values.push(min_price); conditions.push(`price >= $${values.length}`); }
+  if (max_price != null) { values.push(max_price); conditions.push(`price <= $${values.length}`); }
+  if (min_bedrooms != null) { values.push(min_bedrooms); conditions.push(`bedrooms >= $${values.length}`); }
+
+  const { rows } = await pool.query(
+    `SELECT project_name, unit_no, type, area_sqft, bedrooms, bathrooms, price, location, description
+     FROM re_inventory WHERE ${conditions.join(' AND ')}
+     ORDER BY price ASC NULLS LAST LIMIT 5`,
+    values
+  );
+  return rows;
 }
 
 // Manager-facing, one-screen rollup: for every broker, target vs. total
@@ -1015,5 +1283,8 @@ module.exports = {
   addRELead, updateRELead, addREBroker, updateREBroker, addREInventory, updateREInventory, addREAccounting, updateREAccounting,
   addRELeadNote, getRELeadActivity, getREBrokerActivity, getREInventoryActivity,
   bulkAddRELeads, getREMonthlyReport,
+  addRESiteVisit, updateRESiteVisit,
+  findOrCreateREWALead, addREWAMessage, getREWAConversation, getRecentREWAThreads, applyREWAAgentUpdate, searchREInventory,
+  resolveWhatsAppAccountId, getRELeadPhone,
   createAccount, MODULE_PRESETS, LICENSE_TERMS
 };

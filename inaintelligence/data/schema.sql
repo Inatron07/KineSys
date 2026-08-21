@@ -157,9 +157,49 @@ CREATE TABLE IF NOT EXISTS re_accounting (
   created_at   timestamptz NOT NULL DEFAULT now()
 );
 
+-- Site visits: scheduling/tracking for both off-plan show-unit visits and
+-- secondary-market property tours. Tied to a lead, optionally a specific
+-- inventory unit and the broker running the visit.
+CREATE TABLE IF NOT EXISTS re_site_visits (
+  id           text PRIMARY KEY,
+  account_id   text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  lead_id      text REFERENCES re_leads(id) ON DELETE CASCADE,
+  broker_id    text REFERENCES re_brokers(id) ON DELETE SET NULL,
+  inventory_id text REFERENCES re_inventory(id) ON DELETE SET NULL,
+  scheduled_at timestamptz,
+  status       text NOT NULL DEFAULT 'Scheduled', -- Scheduled, Completed, Cancelled, No-show
+  notes        text,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_re_site_visits_account ON re_site_visits(account_id);
+CREATE INDEX IF NOT EXISTS idx_re_site_visits_lead ON re_site_visits(lead_id);
+CREATE INDEX IF NOT EXISTS idx_re_site_visits_broker ON re_site_visits(broker_id);
+CREATE INDEX IF NOT EXISTS idx_re_site_visits_scheduled ON re_site_visits(scheduled_at);
+
+-- WhatsApp conversation log: every inbound/outbound message tied to a lead.
+-- Kept separate from the generic `activity` table (which is a human-readable
+-- event log) since this is a raw chat transcript the Claude agent replays as
+-- context on every reply.
+CREATE TABLE IF NOT EXISTS re_wa_messages (
+  id          text PRIMARY KEY,
+  account_id  text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  lead_id     text NOT NULL REFERENCES re_leads(id) ON DELETE CASCADE,
+  direction   text NOT NULL, -- 'in' | 'out'
+  message     text NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_re_wa_messages_lead ON re_wa_messages(lead_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_re_wa_messages_account ON re_wa_messages(account_id);
+
 -- Extra business detail fields, added after the first Real Estate CRM
 -- pass so every lead/broker/unit has a fuller profile.
 ALTER TABLE re_leads ADD COLUMN IF NOT EXISTS nationality text;
+-- Speed-to-lead SLA: timestamp of the lead's current broker assignment.
+-- Reset every time broker_id changes; used to detect leads sitting
+-- untouched past the 5-minute SLA so Ina can auto-reassign them.
+-- Defaults existing rows to now() on migration so turning this feature on
+-- doesn't trigger an immediate mass-reassignment of already-seeded data.
+ALTER TABLE re_leads ADD COLUMN IF NOT EXISTS assigned_at timestamptz DEFAULT now();
 ALTER TABLE re_brokers ADD COLUMN IF NOT EXISTS license_no text;
 ALTER TABLE re_brokers ADD COLUMN IF NOT EXISTS joined_at date;
 ALTER TABLE re_inventory ADD COLUMN IF NOT EXISTS bedrooms integer;
@@ -170,6 +210,14 @@ ALTER TABLE re_inventory ADD COLUMN IF NOT EXISTS description text;
 ALTER TABLE re_inventory ADD COLUMN IF NOT EXISTS latitude numeric;
 ALTER TABLE re_inventory ADD COLUMN IF NOT EXISTS longitude numeric;
 
+-- WhatsApp integration: a lead's fine-grained conversation state as the
+-- Claude agent tracks it (in_conversation, needs_human, booked_viewing,
+-- not_interested) — separate from the human-facing pipeline `status` field,
+-- though the agent nudges `status` too at key moments (e.g. booked_viewing
+-- also moves status to 'Site Visit').
+ALTER TABLE re_leads ADD COLUMN IF NOT EXISTS wa_conversation_stage text;
+
+CREATE INDEX IF NOT EXISTS idx_re_leads_phone ON re_leads(phone);
 CREATE INDEX IF NOT EXISTS idx_re_leads_account ON re_leads(account_id);
 CREATE INDEX IF NOT EXISTS idx_re_brokers_account ON re_brokers(account_id);
 CREATE INDEX IF NOT EXISTS idx_re_inventory_account ON re_inventory(account_id);
