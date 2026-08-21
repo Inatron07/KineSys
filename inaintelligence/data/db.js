@@ -1000,8 +1000,14 @@ function normalizeWAPhone(phone) {
 
 async function findOrCreateREWALead(accountId, phone, name) {
   const cleanPhone = normalizeWAPhone(phone);
+  // Compare digits-only on both sides — manually-added leads (via the
+  // Add lead form) store phone exactly as typed, which may include
+  // spaces/dashes/a leading "+", none of which `cleanPhone` (from Meta's
+  // raw MSISDN) will have. Without this normalization, "+91 9604139376"
+  // stored would never match incoming "919604139376" and we'd silently
+  // create a duplicate lead instead of matching the existing one.
   const { rows } = await pool.query(
-    'SELECT * FROM re_leads WHERE account_id=$1 AND phone=$2 LIMIT 1',
+    `SELECT * FROM re_leads WHERE account_id=$1 AND regexp_replace(phone, '\\D', '', 'g') = $2 LIMIT 1`,
     [accountId, cleanPhone]
   );
   if (rows[0]) return rows[0];
