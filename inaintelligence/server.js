@@ -394,8 +394,13 @@ app.get('/webhook', (req, res) => {
 app.post('/webhook', (req, res) => {
   // Always ack fast — WhatsApp retries aggressively if you don't 200 quickly.
   res.sendStatus(200);
+  console.log('[webhook] POST received', JSON.stringify(req.body).slice(0, 500));
   const incoming = whatsapp.parseIncomingMessage(req.body);
-  if (!incoming) return; // status update (delivered/read), not a user message
+  if (!incoming) {
+    console.log('[webhook] not a user message (status update or unparsable) — ignoring');
+    return;
+  }
+  console.log(`[webhook] parsed inbound message from ${incoming.from} (${incoming.name || 'no name'}): ${incoming.text}`);
   handleIncomingWhatsAppMessage(incoming).catch((err) => {
     console.error('[webhook] error handling incoming message', err);
   });
@@ -409,6 +414,7 @@ async function handleIncomingWhatsAppMessage(incoming) {
   }
 
   const lead = await db.findOrCreateREWALead(accountId, incoming.from, incoming.name);
+  console.log(`[webhook] matched/created lead ${lead.id} (${lead.name}, phone on file: ${lead.phone})`);
   await db.addREWAMessage(accountId, lead.id, 'in', incoming.text);
 
   if (!whatsappAgent.isConfigured()) {
@@ -420,10 +426,12 @@ async function handleIncomingWhatsAppMessage(incoming) {
   // history already includes the message we just logged — drop it, since
   // generateReply takes prior history + the current message separately.
   const { replyText, stageUpdate } = await whatsappAgent.generateReply(accountId, lead, history.slice(0, -1), incoming.text);
+  console.log(`[webhook] agent reply: ${replyText ? JSON.stringify(replyText).slice(0, 300) : '(none)'}, stage: ${stageUpdate?.stage || '(none)'}`);
 
   if (replyText) {
     await whatsapp.sendTextMessage(incoming.from, replyText);
     await db.addREWAMessage(accountId, lead.id, 'out', replyText);
+    console.log('[webhook] reply sent to', incoming.from);
   }
   if (stageUpdate && stageUpdate.stage) {
     await db.applyREWAAgentUpdate(accountId, lead.id, stageUpdate);
