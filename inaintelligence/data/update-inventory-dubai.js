@@ -38,7 +38,14 @@ const RELOCATIONS = [
     'https://images.bayut.com/thumbnails/830238575-800x600.jpeg',
     'https://images.bayut.com/thumbnails/830238576-800x600.jpeg'
   ] } },
-  { was: { projectName: 'Skyline Heights', unitNo: 'A-1205' }, now: { projectName: 'Marina Heights', unitNo: '1205', type: '1BHK', areaSqft: 720, bedrooms: 1, bathrooms: 2, price: 1280000, status: 'Available', location: 'Dubai Marina', images: ['https://picsum.photos/id/20/1200/800'] } },
+  { was: { projectName: 'Skyline Heights', unitNo: 'A-1205' }, now: { projectName: 'Marina Heights', unitNo: '1205', type: '1BHK', areaSqft: 1011, bedrooms: 1, bathrooms: 2, price: 1574000, status: 'Available', location: 'Dubai Marina', images: [
+    'https://images.bayut.com/thumbnails/861132256-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/861132257-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/861132258-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/861132259-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/861132260-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/861132261-800x600.jpeg'
+  ] } },
   { was: { projectName: 'Palm Villas', unitNo: 'V-07' }, now: { projectName: 'Palm Jumeirah Signature Villas', unitNo: 'V-07', type: 'Villa', areaSqft: 7000, bedrooms: 5, bathrooms: 6, price: 14000000, status: 'Available', location: 'Palm Jumeirah', images: [
     'https://luxhabitat.ae/resizedimages/560w/development/92/source/e5e70da144b3ac80d34b1cf145c57f7572cc05cab9fcff5426c3093ec43f0628.jpg',
     'https://luxhabitat.ae/resizedimages/560w/development/92/source/44066dff7f44c43d4f88fe183e13908940cbba639708b631dc9db474188adbbb.jpg',

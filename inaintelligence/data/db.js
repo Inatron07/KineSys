@@ -1136,7 +1136,12 @@ async function resolveWhatsAppAccountId() {
  * shows, so the agent can never invent a property or price.
  */
 async function searchREInventory(accountId, { area, property_type, min_price, max_price, min_bedrooms } = {}) {
-  const conditions = [`account_id = $1`, `status = 'Available'`];
+  // Only 'Sold' listings are truly off the table — 'Reserved'/'Negotiation'
+  // units can still be discussed (backup offers, price talks in progress),
+  // so excluding anything but 'Available' was hiding real inventory
+  // (Downtown Vista, JVC Sunrise Residences, Business Bay Corporate Tower)
+  // from the WhatsApp agent entirely, regardless of whether it had photos.
+  const conditions = [`account_id = $1`, `status != 'Sold'`];
   const values = [accountId];
 
   if (area) { values.push(`%${area}%`); conditions.push(`location ILIKE $${values.length}`); }
