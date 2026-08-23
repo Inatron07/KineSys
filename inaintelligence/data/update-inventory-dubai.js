@@ -25,21 +25,80 @@ const ADMIN_USERNAME = 'Inacio Fernandes';
 // Matched against the ORIGINAL seed-realestate.js values (project_name,
 // unit_no) so this can find the 7 rows already in production and relocate
 // them in place.
+// Photo sets (except Marina Heights 1BHK) come from real current Bayut/
+// Luxhabitat listings in these exact areas, per explicit instruction —
+// bed/bath/sqft/price were aligned to match whichever listing each unit's
+// photos came from, so the numbers shown match what's pictured.
 const RELOCATIONS = [
-  { was: { projectName: 'Skyline Heights', unitNo: 'A-1204' }, now: { projectName: 'Marina Heights', unitNo: '1204', type: '2BHK', areaSqft: 1050, bedrooms: 2, bathrooms: 2, price: 2150000, status: 'Available', location: 'Dubai Marina', images: ['https://picsum.photos/id/10/1200/800'] } },
+  { was: { projectName: 'Skyline Heights', unitNo: 'A-1204' }, now: { projectName: 'Marina Heights', unitNo: '1204', type: '2BHK', areaSqft: 1284, bedrooms: 2, bathrooms: 3, price: 1900000, status: 'Available', location: 'Dubai Marina', images: [
+    'https://images.bayut.com/thumbnails/830238571-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/830238572-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/830238573-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/830238574-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/830238575-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/830238576-800x600.jpeg'
+  ] } },
   { was: { projectName: 'Skyline Heights', unitNo: 'A-1205' }, now: { projectName: 'Marina Heights', unitNo: '1205', type: '1BHK', areaSqft: 720, bedrooms: 1, bathrooms: 2, price: 1280000, status: 'Available', location: 'Dubai Marina', images: ['https://picsum.photos/id/20/1200/800'] } },
-  { was: { projectName: 'Palm Villas', unitNo: 'V-07' }, now: { projectName: 'Palm Jumeirah Signature Villas', unitNo: 'V-07', type: 'Villa', areaSqft: 3200, bedrooms: 5, bathrooms: 6, price: 9800000, status: 'Available', location: 'Palm Jumeirah', images: ['https://picsum.photos/id/30/1200/800'] } },
-  { was: { projectName: 'Oceanview Towers', unitNo: 'B-0901' }, now: { projectName: 'Downtown Vista', unitNo: '0901', type: '3BHK', areaSqft: 1650, bedrooms: 3, bathrooms: 4, price: 4250000, status: 'Reserved', location: 'Downtown Dubai', images: ['https://picsum.photos/id/40/1200/800'] } },
-  { was: { projectName: 'Green Meadows', unitNo: 'Plot-22' }, now: { projectName: 'Dubai Hills Estate Plots', unitNo: 'Plot-22', type: 'Plot', areaSqft: 2400, bedrooms: null, bathrooms: null, price: 3600000, status: 'Available', location: 'Dubai Hills Estate', images: ['https://picsum.photos/id/50/1200/800'] } },
-  { was: { projectName: 'Metro Business Park', unitNo: 'MBP-501' }, now: { projectName: 'Business Bay Corporate Tower', unitNo: '501', type: 'Office', areaSqft: 2000, bedrooms: null, bathrooms: 2, price: 5750000, status: 'Negotiation', location: 'Business Bay', images: ['https://picsum.photos/id/60/1200/800'] } },
-  { was: { projectName: 'Sunrise Residency', unitNo: 'C-0302' }, now: { projectName: 'JVC Sunrise Residences', unitNo: '0302', type: '2BHK', areaSqft: 980, bedrooms: 2, bathrooms: 2, price: 1150000, status: 'Sold', location: 'Jumeirah Village Circle (JVC)', images: ['https://picsum.photos/id/70/1200/800'] } }
+  { was: { projectName: 'Palm Villas', unitNo: 'V-07' }, now: { projectName: 'Palm Jumeirah Signature Villas', unitNo: 'V-07', type: 'Villa', areaSqft: 7000, bedrooms: 5, bathrooms: 6, price: 14000000, status: 'Available', location: 'Palm Jumeirah', images: [
+    'https://luxhabitat.ae/resizedimages/560w/development/92/source/e5e70da144b3ac80d34b1cf145c57f7572cc05cab9fcff5426c3093ec43f0628.jpg',
+    'https://luxhabitat.ae/resizedimages/560w/development/92/source/44066dff7f44c43d4f88fe183e13908940cbba639708b631dc9db474188adbbb.jpg',
+    'https://luxhabitat.ae/resizedimages/560w/development/92/source/3d0c9a6828d2ec0a9f5a6bd0bc92a26720d57a4a5ea74f77e5f191dce8618fbc.jpg',
+    'https://luxhabitat.ae/resizedimages/560w/development/92/source/cb35ae82818ce7a680c16383e19faad80e74a3584372b0deed4d0778b40bfbc7.jpg',
+    'https://luxhabitat.ae/resizedimages/560w/development/92/source/ea1665918ba9de169dcadf5da03211230daf228f0c2530898454d0c30d85646a.jpg',
+    'https://luxhabitat.ae/resizedimages/560w/development/92/source/2e4c7ac0a94fa48ee7fdf0af5468d42ea1b61e1a4e02ea815ca3a17320bd14b4.jpg'
+  ] } },
+  { was: { projectName: 'Oceanview Towers', unitNo: 'B-0901' }, now: { projectName: 'Downtown Vista', unitNo: '0901', type: '2BHK', areaSqft: 1293, bedrooms: 2, bathrooms: 3, price: 3150000, status: 'Reserved', location: 'Downtown Dubai', images: [
+    'https://images.bayut.com/thumbnails/858913655-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/858913656-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/858913658-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/858913660-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/858913662-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/858913664-800x600.jpeg'
+  ] } },
+  { was: { projectName: 'Green Meadows', unitNo: 'Plot-22' }, now: { projectName: 'Dubai Hills Estate Plots', unitNo: 'Plot-22', type: 'Plot', areaSqft: 13423, bedrooms: null, bathrooms: null, price: 32950000, status: 'Available', location: 'Dubai Hills Estate', images: [
+    'https://images.bayut.com/thumbnails/849298298-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/849298299-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/849298300-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/849298301-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/849298302-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/849298303-800x600.jpeg'
+  ] } },
+  { was: { projectName: 'Metro Business Park', unitNo: 'MBP-501' }, now: { projectName: 'Business Bay Corporate Tower', unitNo: '501', type: 'Office', areaSqft: 2000, bedrooms: null, bathrooms: 2, price: 5750000, status: 'Negotiation', location: 'Business Bay', images: [
+    'https://images.bayut.com/thumbnails/836074933-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/836074934-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/836074935-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/836074936-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/836074937-800x600.jpeg'
+  ] } },
+  { was: { projectName: 'Sunrise Residency', unitNo: 'C-0302' }, now: { projectName: 'JVC Sunrise Residences', unitNo: '0302', type: '2BHK', areaSqft: 1055, bedrooms: 2, bathrooms: 3, price: 1350000, status: 'Sold', location: 'Jumeirah Village Circle (JVC)', images: [
+    'https://images.bayut.com/thumbnails/861369580-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/861369581-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/861369582-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/861369583-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/861369584-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/861369585-800x600.jpeg'
+  ] } }
 ];
 
 // Brand-new "surrounding areas" listings that didn't exist before — inserted
 // only if a property with that name isn't already there.
 const NEW_LISTINGS = [
-  { projectName: 'Al Majaz Waterfront Residences', unitNo: '204', type: '2BHK', areaSqft: 1100, bedrooms: 2, bathrooms: 3, price: 850000, status: 'Available', location: 'Sharjah (Al Majaz)', images: ['https://picsum.photos/id/80/1200/800'] },
-  { projectName: 'Ajman Corniche Towers', unitNo: '1502', type: '1BHK', areaSqft: 750, bedrooms: 1, bathrooms: 2, price: 480000, status: 'Available', location: 'Ajman Corniche', images: ['https://picsum.photos/id/90/1200/800'] }
+  { projectName: 'Al Majaz Waterfront Residences', unitNo: '204', type: '2BHK', areaSqft: 1300, bedrooms: 2, bathrooms: 2, price: 43990, status: 'Available', location: 'Sharjah (Al Majaz)', images: [
+    'https://images.bayut.com/thumbnails/861377094-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/861377095-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/861377096-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/861377097-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/861377158-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/861377159-800x600.jpeg'
+  ] },
+  { projectName: 'Ajman Corniche Towers', unitNo: '1502', type: '1BHK', areaSqft: 1450, bedrooms: 1, bathrooms: 2, price: 52000, status: 'Available', location: 'Ajman Corniche', images: [
+    'https://images.bayut.com/thumbnails/840139529-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/840139530-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/840139531-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/840139532-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/840139537-800x600.jpeg',
+    'https://images.bayut.com/thumbnails/840139538-800x600.jpeg'
+  ] }
 ];
 
 async function run() {
@@ -80,8 +139,11 @@ async function run() {
   for (const n of NEW_LISTINGS) {
     const { rows } = await db.pool.query('SELECT id FROM re_inventory WHERE account_id=$1 AND project_name=$2', [accountId, n.projectName]);
     if (rows.length) {
-      await db.pool.query('UPDATE re_inventory SET bedrooms=$1, bathrooms=$2 WHERE id=$3', [n.bedrooms, n.bathrooms, rows[0].id]);
-      console.log('  Already exists, refreshed bedrooms/bathrooms:', n.projectName);
+      await db.pool.query(
+        'UPDATE re_inventory SET type=$1, area_sqft=$2, price=$3, status=$4, location=$5, images=$6, bedrooms=$7, bathrooms=$8 WHERE id=$9',
+        [n.type, n.areaSqft, n.price, n.status, n.location, n.images, n.bedrooms, n.bathrooms, rows[0].id]
+      );
+      console.log('  Already exists, refreshed:', n.projectName);
       continue;
     }
     await db.pool.query(
