@@ -55,13 +55,13 @@ const SEARCH_PROPERTIES_TOOL = {
 const SEND_PHOTOS_TOOL = {
   name: 'send_property_photos',
   description:
-    "Send the real photos of one specific listing to the lead over WhatsApp. Only call this with an id returned by search_properties where photo_count > 0, and only when the lead is interested in that specific listing or explicitly asks to see photos — never call it speculatively.",
+    "Send the real photos of one specific listing to the lead over WhatsApp. Call this whenever the lead is interested in a specific listing or explicitly asks to see its photos — including a listing you already mentioned earlier in this conversation, even several messages ago. You don't need to call search_properties again first; just pass the project name as you already know it. Never call it speculatively for a listing that hasn't come up.",
   input_schema: {
     type: 'object',
     properties: {
-      property_id: { type: 'string', description: 'The id field from a search_properties result.' },
+      project_name: { type: 'string', description: 'The listing\'s project name, as returned by search_properties or as you already mentioned it earlier in the conversation (e.g. "JVC Sunrise Residences").' },
     },
-    required: ['property_id'],
+    required: ['project_name'],
   },
 };
 
@@ -109,7 +109,10 @@ LISTINGS (use the search_properties tool):
   conversationally and ask if they'd like more.
 - If a match has photo_count > 0 and the lead seems interested in that specific
   listing (or asks to see it), offer to send photos, then call
-  send_property_photos with its id once they say yes. Don't send photos
+  send_property_photos with its project name once they say yes. This also
+  works for a listing you mentioned earlier in the conversation — if the lead
+  circles back later and asks to see it, just call send_property_photos with
+  the name again, no need to search_properties first. Don't send photos
   unprompted or for every match — only the one they're actually interested in.
 
 WHEN TO ESCALATE TO A HUMAN (use the update_lead_stage tool):
@@ -128,10 +131,10 @@ current, using your best judgement on stage/notes, THEN write your WhatsApp repl
  * just a text reply) and returns a short string describing what happened,
  * fed back to Claude as the tool result so it can react in its next message.
  */
-async function sendPropertyPhotos(accountId, phone, propertyId) {
+async function sendPropertyPhotos(accountId, phone, projectName) {
   if (!phone) return 'This lead has no phone number on file — cannot send photos.';
-  const listing = await db.getREInventoryImages(accountId, propertyId);
-  if (!listing) return 'No listing found with that id.';
+  const listing = await db.getREInventoryImagesByName(accountId, projectName);
+  if (!listing) return `No listing found matching "${projectName}".`;
   if (!listing.images.length) return `No photos on file for ${listing.projectName}.`;
   let sent = 0;
   for (const url of listing.images) {
@@ -188,7 +191,7 @@ async function generateReply(accountId, lead, history, incomingText) {
           content: matches.length ? JSON.stringify(matches) : 'No matching available properties found.',
         });
       } else if (call.name === 'send_property_photos') {
-        const result = await sendPropertyPhotos(accountId, lead.phone, call.input.property_id);
+        const result = await sendPropertyPhotos(accountId, lead.phone, call.input.project_name);
         toolResults.push({ type: 'tool_result', tool_use_id: call.id, content: result });
       } else {
         toolResults.push({ type: 'tool_result', tool_use_id: call.id, content: 'Unknown tool.', is_error: true });

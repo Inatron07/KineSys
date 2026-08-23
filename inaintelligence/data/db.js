@@ -1173,6 +1173,23 @@ async function getREInventoryImages(accountId, itemId) {
   return { projectName: rows[0].project_name, unitNo: rows[0].unit_no, images: rows[0].images || [] };
 }
 
+/** Same as getREInventoryImages but looked up by project name instead of id.
+ * Each webhook turn rebuilds the agent's conversation from plain-text
+ * history (see whatsappAgent.js), so a property `id` handed back by
+ * search_properties in one turn is gone by the next — the model only
+ * remembers the property NAME it already said out loud. Looking up by name
+ * (ILIKE, so "JVC Sunrise Residences" still matches after minor rewording)
+ * lets the agent send photos of anything it already mentioned, without
+ * needing to silently re-search or hallucinate an id first. */
+async function getREInventoryImagesByName(accountId, projectName) {
+  const { rows } = await pool.query(
+    'SELECT id, project_name, unit_no, images FROM re_inventory WHERE account_id=$1 AND project_name ILIKE $2 ORDER BY array_length(images,1) DESC NULLS LAST LIMIT 1',
+    [accountId, `%${projectName}%`]
+  );
+  if (!rows[0]) return null;
+  return { id: rows[0].id, projectName: rows[0].project_name, unitNo: rows[0].unit_no, images: rows[0].images || [] };
+}
+
 // Manager-facing, one-screen rollup: for every broker, target vs. total
 // achieved plus what happened *this calendar month* specifically — new
 // leads assigned, collections received, deals closed. Built from data
@@ -1319,7 +1336,7 @@ module.exports = {
   addRELeadNote, getRELeadActivity, getREBrokerActivity, getREInventoryActivity,
   bulkAddRELeads, getREMonthlyReport,
   addRESiteVisit, updateRESiteVisit,
-  findOrCreateREWALead, addREWAMessage, getREWAConversation, clearREWAConversation, getRecentREWAThreads, applyREWAAgentUpdate, searchREInventory, getREInventoryImages,
+  findOrCreateREWALead, addREWAMessage, getREWAConversation, clearREWAConversation, getRecentREWAThreads, applyREWAAgentUpdate, searchREInventory, getREInventoryImages, getREInventoryImagesByName,
   resolveWhatsAppAccountId, getRELeadPhone,
   createAccount, MODULE_PRESETS, LICENSE_TERMS
 };
