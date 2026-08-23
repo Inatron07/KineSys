@@ -497,7 +497,11 @@ app.post('/api/accounts/:id/re/whatsapp/send-template', requireAuth, asyncRoute(
   if (!process.env.OUTREACH_TEMPLATE_NAME) return res.status(400).json({ error: 'OUTREACH_TEMPLATE_NAME is not set in .env.' });
   const firstName = (lead.name || 'there').split(' ')[0];
   try {
-    await whatsapp.sendTemplateMessage(lead.phone, process.env.OUTREACH_TEMPLATE_NAME, process.env.OUTREACH_TEMPLATE_LANG || 'en', [firstName]);
+    // The approved "kinesys" template's body has no {{1}}/{{2}} placeholders,
+    // so no body parameters are sent — passing any breaks Meta's param-count
+    // check (#132000 "Number of parameters does not match..."). If you ever
+    // approve a template with variables, add them back here to match.
+    await whatsapp.sendTemplateMessage(lead.phone, process.env.OUTREACH_TEMPLATE_NAME, process.env.OUTREACH_TEMPLATE_LANG || 'en', []);
     await db.addREWAMessage(req.params.id, leadId, 'out', `[template: ${process.env.OUTREACH_TEMPLATE_NAME}] outreach message sent to ${firstName}`);
     res.json({ ok: true });
   } catch (err) {
@@ -524,7 +528,7 @@ app.post('/api/accounts/:id/re/whatsapp/bulk-send-template', requireAuth, asyncR
     }
     const firstName = (lead.name || 'there').split(' ')[0];
     try {
-      await whatsapp.sendTemplateMessage(lead.phone, process.env.OUTREACH_TEMPLATE_NAME, process.env.OUTREACH_TEMPLATE_LANG || 'en', [firstName]);
+      await whatsapp.sendTemplateMessage(lead.phone, process.env.OUTREACH_TEMPLATE_NAME, process.env.OUTREACH_TEMPLATE_LANG || 'en', []);
       await db.addREWAMessage(req.params.id, leadId, 'out', `[template: ${process.env.OUTREACH_TEMPLATE_NAME}] outreach message sent to ${firstName}`);
       results.push({ leadId, ok: true });
     } catch (err) {
