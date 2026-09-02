@@ -37,4 +37,23 @@
     left?.addEventListener('click', () => track.scrollBy({ left: -step(), behavior: reduceMotion ? 'auto' : 'smooth' }));
     right?.addEventListener('click', () => track.scrollBy({ left: step(), behavior: reduceMotion ? 'auto' : 'smooth' }));
   });
+
+  // ---- Work-feature video: custom fullscreen toggle (like YouTube's button) ----
+  document.querySelectorAll('.video-frame').forEach((frame) => {
+    const btn = frame.querySelector('.video-fullscreen-btn');
+    if (!btn) return;
+    const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement || null;
+    const request = frame.requestFullscreen || frame.webkitRequestFullscreen;
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    btn.addEventListener('click', () => {
+      if (fsEl() === frame) {
+        exit && exit.call(document);
+      } else if (request) {
+        request.call(frame);
+      }
+    });
+    const sync = () => frame.classList.toggle('is-fullscreen', fsEl() === frame);
+    document.addEventListener('fullscreenchange', sync);
+    document.addEventListener('webkitfullscreenchange', sync);
+  });
 })();
