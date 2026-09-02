@@ -352,6 +352,9 @@ app.post('/api/accounts/:id/re/leads/upload', requireAuth, leadUpload.single('fi
   const rows = raw.map((r) => ({
     name: pickCell(r, ['name', 'lead name', 'full name']),
     phone: pickCell(r, ['phone', 'phone number', 'mobile', 'contact number']),
+    // Optional — if the sheet doesn't have this column, db.withCountryCode()
+    // falls back to DEFAULT_COUNTRY_CODE for any phone of 10 digits or fewer.
+    countryCode: pickCell(r, ['country code', 'countrycode', 'cc', 'dial code', 'isd code']),
     email: pickCell(r, ['email', 'email address']),
     source: pickCell(r, ['source', 'lead source']),
     propertyInterest: pickCell(r, ['property interest', 'property', 'interest']),
@@ -377,9 +380,12 @@ app.get('/api/accounts/:id/re/monthly-report', requireAuth, asyncRoute(async (re
 // ---------- Real Estate CRM: WhatsApp integration ----------
 // The webhook itself (GET/POST /webhook) is intentionally public — Meta
 // calls it directly, with no session. It's not scoped to :id in the URL;
-// db.resolveWhatsAppAccountId() figures out which account owns it (either
-// the one real_estate account, or WHATSAPP_ACCOUNT_ID if more than one
-// exists). Everything else below is a normal authenticated account route.
+// db.resolveAccountByPhoneNumberId() figures out which account owns it by
+// matching the phone_number_id Meta includes in the payload against each
+// account's own re_whatsapp_config row (falling back to the legacy single
+// .env-configured account when it matches WHATSAPP_PHONE_NUMBER_ID). This is
+// what lets multiple real_estate accounts each run their own WhatsApp
+// number. Everything else below is a normal authenticated account route.
 
 app.get('/webhook', (req, res) => {
   const challenge = whatsapp.verifyWebhookChallenge(req.query);
@@ -395,9 +401,27 @@ app.post('/webhook', (req, res) => {
   // Always ack fast — WhatsApp retries aggressively if you don't 200 quickly.
   res.sendStatus(200);
   console.log('[webhook] POST received', JSON.stringify(req.body).slice(0, 500));
+
+  const statusUpdate = whatsapp.parseStatusUpdate(req.body);
+  if (statusUpdate) {
+    // statusUpdate.phoneNumberId isn't needed for the status-save itself
+    // (we match by wamid, which is globally unique), but logged for parity.
+    const errSuffix = statusUpdate.status === 'failed'
+      ? ` — error ${statusUpdate.errorCode}: ${statusUpdate.errorTitle || statusUpdate.errorDetail || '(no detail)'}`
+      : '';
+    console.log(`[webhook] delivery status for ${statusUpdate.waMessageId}: ${statusUpdate.status}${errSuffix}`);
+    const detail = statusUpdate.status === 'failed'
+      ? `${statusUpdate.errorCode ? `#${statusUpdate.errorCode} ` : ''}${statusUpdate.errorTitle || statusUpdate.errorDetail || 'Delivery failed'}`
+      : null;
+    db.updateREWAMessageStatus(statusUpdate.waMessageId, statusUpdate.status, detail).catch((err) => {
+      console.error('[webhook] error saving delivery status', err);
+    });
+    return;
+  }
+
   const incoming = whatsapp.parseIncomingMessage(req.body);
   if (!incoming) {
-    console.log('[webhook] not a user message (status update or unparsable) — ignoring');
+    console.log('[webhook] not a user message or status update — ignoring');
     return;
   }
   console.log(`[webhook] parsed inbound message from ${incoming.from} (${incoming.name || 'no name'}): ${incoming.text}`);
@@ -407,11 +431,17 @@ app.post('/webhook', (req, res) => {
 });
 
 async function handleIncomingWhatsAppMessage(incoming) {
-  const accountId = await db.resolveWhatsAppAccountId();
+  // Route by the phone_number_id Meta sent this on, so each real_estate
+  // account with its own WhatsApp number only sees its own conversations.
+  // Falls back to the legacy single-account resolution for the original
+  // demo account (its number lives in .env, not re_whatsapp_config).
+  const accountId = await db.resolveAccountByPhoneNumberId(incoming.phoneNumberId);
   if (!accountId) {
-    console.warn('[webhook] no WhatsApp-enabled Real Estate account found — set WHATSAPP_ACCOUNT_ID in .env if you run more than one.');
+    console.warn(`[webhook] no account found for phone_number_id ${incoming.phoneNumberId} — is it registered in re_whatsapp_config or WHATSAPP_PHONE_NUMBER_ID?`);
     return;
   }
+  const waConfig = await db.getEffectiveWhatsAppConfig(accountId);
+  const creds = { phoneNumberId: waConfig.phoneNumberId, accessToken: waConfig.accessToken };
 
   const lead = await db.findOrCreateREWALead(accountId, incoming.from, incoming.name);
   console.log(`[webhook] matched/created lead ${lead.id} (${lead.name}, phone on file: ${lead.phone})`);
@@ -425,12 +455,12 @@ async function handleIncomingWhatsAppMessage(incoming) {
   const history = await db.getREWAConversation(accountId, lead.id, 20);
   // history already includes the message we just logged — drop it, since
   // generateReply takes prior history + the current message separately.
-  const { replyText, stageUpdate } = await whatsappAgent.generateReply(accountId, lead, history.slice(0, -1), incoming.text);
+  const { replyText, stageUpdate } = await whatsappAgent.generateReply(accountId, lead, history.slice(0, -1), incoming.text, waConfig);
   console.log(`[webhook] agent reply: ${replyText ? JSON.stringify(replyText).slice(0, 300) : '(none)'}, stage: ${stageUpdate?.stage || '(none)'}`);
 
   if (replyText) {
-    await whatsapp.sendTextMessage(incoming.from, replyText);
-    await db.addREWAMessage(accountId, lead.id, 'out', replyText);
+    const result = await whatsapp.sendTextMessage(incoming.from, replyText, creds);
+    await db.addREWAMessage(accountId, lead.id, 'out', replyText, result?.messages?.[0]?.id);
     console.log('[webhook] reply sent to', incoming.from);
   }
   if (stageUpdate && stageUpdate.stage) {
@@ -440,18 +470,50 @@ async function handleIncomingWhatsAppMessage(incoming) {
 
 app.get('/api/accounts/:id/re/whatsapp/status', requireAuth, asyncRoute(async (req, res) => {
   if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
-  const resolvedAccountId = await db.resolveWhatsAppAccountId();
+  const waConfig = await db.getEffectiveWhatsAppConfig(req.params.id);
+  const resolvedAccountId = await db.resolveAccountByPhoneNumberId(waConfig.phoneNumberId);
   const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
   res.json({
-    whatsappConfigured: whatsapp.isConfigured(),
+    whatsappConfigured: !!(waConfig.phoneNumberId && waConfig.accessToken),
     agentConfigured: whatsappAgent.isConfigured(),
     wiredToThisAccount: !!resolvedAccountId && resolvedAccountId === req.params.id,
     resolvedAccountId: resolvedAccountId || null,
     callbackUrl: `${base}/webhook`,
-    verifyToken: process.env.WHATSAPP_VERIFY_TOKEN || null,
-    templateName: process.env.OUTREACH_TEMPLATE_NAME || null,
-    templateLang: process.env.OUTREACH_TEMPLATE_LANG || 'en',
+    verifyToken: process.env.WHATSAPP_VERIFY_TOKEN || null, // shared across all accounts — see whatsappClient.js
+    templateName: waConfig.templateName || null,
+    templateLang: waConfig.templateLang || 'en',
+    configSource: waConfig.source, // 'account' (own re_whatsapp_config row) or 'env' (legacy demo account)
   });
+}));
+
+// Per-account WhatsApp Business setup — lets a real_estate customer plug in
+// their own number instead of riding on the shared .env-configured one.
+// Never returns the stored access_token itself, only whether one's on file.
+app.get('/api/accounts/:id/re/whatsapp/config', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const config = await db.getREWhatsAppConfigForUI(req.params.id);
+  res.json(config || {});
+}));
+
+app.put('/api/accounts/:id/re/whatsapp/config', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const {
+    phoneNumberId, accessToken, businessNumber, templateName, templateLang,
+    agentName, businessName, businessContext,
+  } = req.body || {};
+  if (!phoneNumberId || !phoneNumberId.trim()) return res.status(400).json({ error: 'Phone number ID is required.' });
+  // accessToken is optional on update — omit it to keep the existing token on file (e.g. only changing the template name).
+  let finalAccessToken = accessToken;
+  if (!finalAccessToken) {
+    const { rows } = await db.pool.query('SELECT access_token FROM re_whatsapp_config WHERE account_id=$1', [req.params.id]);
+    finalAccessToken = rows[0]?.access_token || null;
+  }
+  await db.upsertREWhatsAppConfig(req.params.id, {
+    phoneNumberId: phoneNumberId.trim(),
+    accessToken: finalAccessToken,
+    businessNumber, templateName, templateLang, agentName, businessName, businessContext,
+  });
+  res.json({ ok: true });
 }));
 
 app.get('/api/accounts/:id/re/whatsapp/conversations', requireAuth, asyncRoute(async (req, res) => {
@@ -479,8 +541,10 @@ app.post('/api/accounts/:id/re/whatsapp/send', requireAuth, asyncRoute(async (re
   const lead = await db.getRELeadPhone(req.params.id, leadId);
   if (!lead || !lead.phone) return res.status(400).json({ error: 'This lead has no phone number on file.' });
   try {
-    await whatsapp.sendTextMessage(lead.phone, text.trim());
-    await db.addREWAMessage(req.params.id, leadId, 'out', text.trim());
+    const waConfig = await db.getEffectiveWhatsAppConfig(req.params.id);
+    const creds = { phoneNumberId: waConfig.phoneNumberId, accessToken: waConfig.accessToken };
+    const result = await whatsapp.sendTextMessage(lead.phone, text.trim(), creds);
+    await db.addREWAMessage(req.params.id, leadId, 'out', text.trim(), result?.messages?.[0]?.id);
     res.json({ ok: true });
   } catch (err) {
     const detail = err.response?.data?.error?.message || err.message;
@@ -494,18 +558,24 @@ app.post('/api/accounts/:id/re/whatsapp/send-template', requireAuth, asyncRoute(
   if (!leadId) return res.status(400).json({ error: 'leadId is required.' });
   const lead = await db.getRELeadPhone(req.params.id, leadId);
   if (!lead || !lead.phone) return res.status(400).json({ error: 'This lead has no phone number on file.' });
-  if (!process.env.OUTREACH_TEMPLATE_NAME) return res.status(400).json({ error: 'OUTREACH_TEMPLATE_NAME is not set in .env.' });
+  const waConfig = await db.getEffectiveWhatsAppConfig(req.params.id);
+  if (!waConfig.templateName) return res.status(400).json({ error: 'No outreach template configured for this account yet — set it up in WhatsApp Integration → Setup.' });
   const firstName = (lead.name || 'there').split(' ')[0];
   try {
     // The approved "kinesys" template's body has no {{1}}/{{2}} placeholders,
     // so no body parameters are sent — passing any breaks Meta's param-count
     // check (#132000 "Number of parameters does not match..."). If you ever
     // approve a template with variables, add them back here to match.
-    await whatsapp.sendTemplateMessage(lead.phone, process.env.OUTREACH_TEMPLATE_NAME, process.env.OUTREACH_TEMPLATE_LANG || 'en', []);
-    await db.addREWAMessage(req.params.id, leadId, 'out', `[template: ${process.env.OUTREACH_TEMPLATE_NAME}] outreach message sent to ${firstName}`);
+    const creds = { phoneNumberId: waConfig.phoneNumberId, accessToken: waConfig.accessToken };
+    const result = await whatsapp.sendTemplateMessage(lead.phone, waConfig.templateName, waConfig.templateLang, [], creds);
+    await db.addREWAMessage(req.params.id, leadId, 'out', `[template: ${waConfig.templateName}] outreach message sent to ${firstName}`, result?.messages?.[0]?.id);
     res.json({ ok: true });
   } catch (err) {
     const detail = err.response?.data?.error?.message || err.message;
+    // Record the failed attempt in the lead's WhatsApp history too, not just
+    // the API error response — otherwise a failed send leaves no trace once
+    // this response is gone, and it looks like the lead was never contacted.
+    await db.addREWAMessage(req.params.id, leadId, 'out', `[template: ${waConfig.templateName}] outreach send FAILED to ${firstName}`, null, { status: 'failed', statusDetail: detail });
     res.status(500).json({ error: detail });
   }
 }));
@@ -514,7 +584,9 @@ app.post('/api/accounts/:id/re/whatsapp/bulk-send-template', requireAuth, asyncR
   if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
   const { leadIds } = req.body || {};
   if (!Array.isArray(leadIds) || !leadIds.length) return res.status(400).json({ error: 'leadIds (non-empty array) is required.' });
-  if (!process.env.OUTREACH_TEMPLATE_NAME) return res.status(400).json({ error: 'OUTREACH_TEMPLATE_NAME is not set in .env.' });
+  const waConfig = await db.getEffectiveWhatsAppConfig(req.params.id);
+  if (!waConfig.templateName) return res.status(400).json({ error: 'No outreach template configured for this account yet — set it up in WhatsApp Integration → Setup.' });
+  const creds = { phoneNumberId: waConfig.phoneNumberId, accessToken: waConfig.accessToken };
 
   const results = [];
   // Sequential, not Promise.all — WhatsApp's API rate-limits bursts of
@@ -528,11 +600,15 @@ app.post('/api/accounts/:id/re/whatsapp/bulk-send-template', requireAuth, asyncR
     }
     const firstName = (lead.name || 'there').split(' ')[0];
     try {
-      await whatsapp.sendTemplateMessage(lead.phone, process.env.OUTREACH_TEMPLATE_NAME, process.env.OUTREACH_TEMPLATE_LANG || 'en', []);
-      await db.addREWAMessage(req.params.id, leadId, 'out', `[template: ${process.env.OUTREACH_TEMPLATE_NAME}] outreach message sent to ${firstName}`);
+      const result = await whatsapp.sendTemplateMessage(lead.phone, waConfig.templateName, waConfig.templateLang, [], creds);
+      await db.addREWAMessage(req.params.id, leadId, 'out', `[template: ${waConfig.templateName}] outreach message sent to ${firstName}`, result?.messages?.[0]?.id);
       results.push({ leadId, ok: true });
     } catch (err) {
-      results.push({ leadId, ok: false, error: err.response?.data?.error?.message || err.message });
+      const detail = err.response?.data?.error?.message || err.message;
+      // Same as the single-send route: log the failure onto the lead so it's
+      // visible later in their WhatsApp panel, not just in this response.
+      await db.addREWAMessage(req.params.id, leadId, 'out', `[template: ${waConfig.templateName}] outreach send FAILED to ${firstName}`, null, { status: 'failed', statusDetail: detail });
+      results.push({ leadId, ok: false, error: detail });
     }
   }
 

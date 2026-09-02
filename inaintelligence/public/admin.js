@@ -1109,6 +1109,11 @@
       .then(renderWaSetup)
       .catch(function () { document.getElementById('waSetupSub').textContent = 'Could not load status.'; });
 
+    fetch('/api/accounts/' + accountId + '/re/whatsapp/config')
+      .then(function (res) { return res.json(); })
+      .then(fillWaCfgForm)
+      .catch(function () {});
+
     fetch('/api/accounts/' + accountId + '/re/whatsapp/conversations')
       .then(function (res) { return res.json(); })
       .then(renderWaConvos)
@@ -1125,6 +1130,54 @@
     var show = body.style.display === 'none';
     body.style.display = show ? '' : 'none';
     btn.textContent = show ? 'Hide setup' : 'Show setup';
+  });
+
+  // Populates the "this account's WhatsApp number" form. Note: access_token
+  // is never sent back by the API (write-only) — the password field stays
+  // blank even when one's saved, so leaving it blank on save keeps the
+  // existing token rather than clearing it.
+  function fillWaCfgForm(cfg) {
+    cfg = cfg || {};
+    document.getElementById('waCfgPhoneNumberId').value = cfg.phone_number_id || '';
+    document.getElementById('waCfgAccessToken').value = '';
+    document.getElementById('waCfgAccessToken').placeholder = cfg.has_token ? '(saved — leave blank to keep it)' : 'EAAG...';
+    document.getElementById('waCfgBusinessNumber').value = cfg.business_number || '';
+    document.getElementById('waCfgTemplateName').value = cfg.template_name || '';
+    document.getElementById('waCfgTemplateLang').value = cfg.template_lang || 'en';
+    document.getElementById('waCfgAgentName').value = cfg.agent_name || '';
+    document.getElementById('waCfgBusinessName').value = cfg.business_name || '';
+    document.getElementById('waCfgBusinessContext').value = cfg.business_context || '';
+  }
+
+  document.getElementById('waCfgSaveBtn').addEventListener('click', function () {
+    var btn = document.getElementById('waCfgSaveBtn');
+    var statusEl = document.getElementById('waCfgSaveStatus');
+    var phoneNumberId = document.getElementById('waCfgPhoneNumberId').value.trim();
+    if (!phoneNumberId) { showToast('Phone number ID is required to save.'); return; }
+    btn.disabled = true;
+    statusEl.textContent = 'Saving…';
+    fetch('/api/accounts/' + accountId + '/re/whatsapp/config', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phoneNumberId: phoneNumberId,
+        accessToken: document.getElementById('waCfgAccessToken').value.trim(), // blank = keep existing, handled server-side
+        businessNumber: document.getElementById('waCfgBusinessNumber').value.trim(),
+        templateName: document.getElementById('waCfgTemplateName').value.trim(),
+        templateLang: document.getElementById('waCfgTemplateLang').value.trim() || 'en',
+        agentName: document.getElementById('waCfgAgentName').value.trim(),
+        businessName: document.getElementById('waCfgBusinessName').value.trim(),
+        businessContext: document.getElementById('waCfgBusinessContext').value.trim(),
+      })
+    }).then(function (res) { return res.json().then(function (d) { return { ok: res.ok, d: d }; }); })
+      .then(function (r) {
+        btn.disabled = false;
+        if (!r.ok) { statusEl.textContent = ''; showToast(r.d.error || 'Could not save.'); return; }
+        statusEl.textContent = 'Saved.';
+        showToast('WhatsApp settings saved.');
+        setTimeout(function () { statusEl.textContent = ''; }, 2500);
+        loadWhatsAppTab(); // refresh status banner + form (e.g. token placeholder) to reflect the save
+      })
+      .catch(function () { btn.disabled = false; statusEl.textContent = ''; showToast('Could not save.'); });
   });
 
   // -- WhatsApp outreach: leads side panel (filter + multi-select + bulk send) --
@@ -1231,8 +1284,8 @@
     } else if (!status.wiredToThisAccount) {
       banner.className = 'wa-banner warn';
       banner.style.display = '';
-      banner.textContent = 'WhatsApp is configured, but inbound messages are currently routed to a different account. Set WHATSAPP_ACCOUNT_ID in .env to this account’s ID if that’s not intended.';
-      document.getElementById('waSetupSub').textContent = 'Connected — different account';
+      banner.textContent = 'This account isn’t wired to a WhatsApp number yet. Fill in "This account’s WhatsApp number" below with its own phone number ID + access token, or set WHATSAPP_ACCOUNT_ID in .env if it should use the shared default number instead.';
+      document.getElementById('waSetupSub').textContent = 'Not wired to a number yet';
     } else {
       banner.className = 'wa-banner ok';
       banner.style.display = '';
@@ -1245,12 +1298,14 @@
     document.getElementById('waConvosSub').textContent = threads.length + (threads.length === 1 ? ' conversation' : ' conversations');
     document.getElementById('waConvosList').innerHTML = threads.map(function (t) {
       var preview = (t.lastDirection === 'out' ? 'You: ' : '') + (t.lastMessage || '');
+      var failedFlag = (t.lastDirection === 'out' && t.lastMessageStatus === 'failed')
+        ? ' <span class="wa-status failed" title="This message failed to deliver">⚠ Failed</span>' : '';
       return '<div class="wa-convo-row" data-open-wa-lead="' + t.leadId + '">' +
         '<div class="avatar" style="background:' + avatarColor(t.name) + ';">' + initials(t.name) + '</div>' +
         '<div class="body"><div class="top"><strong>' + (t.name || t.phone) + '</strong>' +
         '<span class="status-pill ' + reStatusClass(t.status) + '" style="margin-left:6px;">' + t.status + '</span>' +
         '<span class="when">' + timeAgo(t.lastMessageAt) + '</span></div>' +
-        '<div class="preview">' + preview + '</div></div></div>';
+        '<div class="preview">' + preview + failedFlag + '</div></div></div>';
     }).join('') || '<div class="empty-note">No WhatsApp conversations yet — once a lead messages your business number, they’ll show up here.</div>';
     document.querySelectorAll('[data-open-wa-lead]').forEach(function (row) {
       row.addEventListener('click', function () {
@@ -1312,16 +1367,34 @@
       .then(function (res) { return res.json(); })
       .then(function (messages) {
         if (activeWaChatLeadId !== leadId) return;
-        var html = messages.map(function (m) {
-          return '<div class="wa-bubble-row ' + m.direction + '"><div class="wa-bubble ' + m.direction + '">' +
-            escapeHtmlWa(m.message) + '<div class="when">' + timeAgo(m.at) + '</div></div></div>';
-        }).join('') || '<div class="empty-note" style="padding:16px 0;">No WhatsApp messages with this lead yet.</div>';
+        var html = messages.map(waMsgBubbleHtml).join('') || '<div class="empty-note" style="padding:16px 0;">No WhatsApp messages with this lead yet.</div>';
         if (box.innerHTML === html) return; // nothing new — skip the reflow/scroll reset
         box.innerHTML = html;
         box.setAttribute('data-loaded', '1');
         if (isFirstLoad || wasNearBottom) box.scrollTop = box.scrollHeight;
       })
       .catch(function () { if (isFirstLoad) box.innerHTML = '<div class="empty-note" style="padding:16px 0;">Could not load messages.</div>'; });
+  }
+
+  // Shared renderer for one WA message bubble, including a delivery-status
+  // badge on outbound messages (sent/delivered/read ticks, or a red "Failed"
+  // flag with the reason from Meta's async status webhook).
+  function waMsgBubbleHtml(m) {
+    var statusHtml = '';
+    if (m.direction === 'out') {
+      if (m.status === 'failed') {
+        statusHtml = '<span class="wa-status failed" title="' + escapeHtmlWa(m.statusDetail || 'Delivery failed') + '">⚠ Failed' +
+          (m.statusDetail ? ': ' + escapeHtmlWa(m.statusDetail) : '') + '</span>';
+      } else if (m.status === 'read') {
+        statusHtml = '<span class="wa-status read" title="Read">✓✓</span>';
+      } else if (m.status === 'delivered') {
+        statusHtml = '<span class="wa-status delivered" title="Delivered">✓✓</span>';
+      } else if (m.status === 'sent') {
+        statusHtml = '<span class="wa-status sent" title="Sent, not yet delivered">✓</span>';
+      }
+    }
+    return '<div class="wa-bubble-row ' + m.direction + '"><div class="wa-bubble ' + m.direction + '">' +
+      escapeHtmlWa(m.message) + '<div class="when">' + timeAgo(m.at) + (statusHtml ? ' ' + statusHtml : '') + '</div></div></div>';
   }
 
   document.getElementById('waChatBack').addEventListener('click', function (e) { e.preventDefault(); closeWaChat(); });
@@ -1391,10 +1464,7 @@
       .then(function (res) { return res.json(); })
       .then(function (messages) {
         if (!activeDetail || activeDetail.type !== 'lead' || activeDetail.id !== leadId) return;
-        var html = messages.map(function (m) {
-          return '<div class="wa-bubble-row ' + m.direction + '"><div class="wa-bubble ' + m.direction + '">' +
-            escapeHtmlWa(m.message) + '<div class="when">' + timeAgo(m.at) + '</div></div></div>';
-        }).join('') || '<div class="empty-note" style="padding:16px 0;">No WhatsApp messages with this lead yet.</div>';
+        var html = messages.map(waMsgBubbleHtml).join('') || '<div class="empty-note" style="padding:16px 0;">No WhatsApp messages with this lead yet.</div>';
         if (box.innerHTML === html) return;
         box.innerHTML = html;
         box.setAttribute('data-loaded', '1');
@@ -1508,6 +1578,7 @@
     var l = leadId ? currentData.leads.filter(function (x) { return x.id === leadId; })[0] : null;
     document.getElementById('reLeadModalTitle').textContent = l ? 'Edit lead' : 'Add lead';
     document.getElementById('reLeadName').value = l ? l.name : '';
+    document.getElementById('reLeadCountryCode').value = l ? (l.countryCode || '971') : '971';
     document.getElementById('reLeadPhone').value = l ? (l.phone || '') : '';
     document.getElementById('reLeadEmail').value = l ? (l.email || '') : '';
     document.getElementById('reLeadProperty').value = l ? (l.propertyInterest || '') : '';
@@ -1566,6 +1637,7 @@
     var payload = {
       name: name,
       phone: document.getElementById('reLeadPhone').value.trim(),
+      countryCode: document.getElementById('reLeadCountryCode').value.trim(),
       email: document.getElementById('reLeadEmail').value.trim(),
       propertyInterest: document.getElementById('reLeadProperty').value.trim(),
       source: document.getElementById('reLeadSource').value || 'Manual Entry',

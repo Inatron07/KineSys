@@ -251,6 +251,45 @@
                   Verify token above, click <strong>Verify and save</strong>, then subscribe to the <strong>messages</strong> field.
                   Once saved, this URL stays the same permanently — no more re-pasting a new ngrok link every session.
                 </p>
+
+                <div style="border-top:1px solid var(--border);padding:16px 18px 4px;">
+                  <h4 style="margin:0 0 4px;font-size:12.5px;">This account's WhatsApp number</h4>
+                  <p class="hint-line" style="margin:0 0 12px;">
+                    Leave blank to keep sharing the default KineSys demo number. Fill these in once this account
+                    has its own approved WhatsApp Business number + template — every send from this account will
+                    then go out from that number instead.
+                  </p>
+                  <div class="note-form" style="flex-direction:column;align-items:stretch;gap:8px;">
+                    <label class="hint-line" style="margin:0;">Phone number ID (from Meta)
+                      <input id="waCfgPhoneNumberId" type="text" placeholder="e.g. 1265881989944022">
+                    </label>
+                    <label class="hint-line" style="margin:0;">Access token (leave blank to keep the one already saved)
+                      <input id="waCfgAccessToken" type="password" placeholder="EAAG...">
+                    </label>
+                    <label class="hint-line" style="margin:0;">Display number (for reference only)
+                      <input id="waCfgBusinessNumber" type="text" placeholder="e.g. +971 5X XXX XXXX">
+                    </label>
+                    <label class="hint-line" style="margin:0;">Approved outreach template name
+                      <input id="waCfgTemplateName" type="text" placeholder="e.g. kinesys">
+                    </label>
+                    <label class="hint-line" style="margin:0;">Template language code
+                      <input id="waCfgTemplateLang" type="text" placeholder="en">
+                    </label>
+                    <label class="hint-line" style="margin:0;">AI agent name
+                      <input id="waCfgAgentName" type="text" placeholder="e.g. Zara">
+                    </label>
+                    <label class="hint-line" style="margin:0;">Business name (shown to leads)
+                      <input id="waCfgBusinessName" type="text" placeholder="e.g. Acme Realty">
+                    </label>
+                    <label class="hint-line" style="margin:0;">Business context (fed to the AI agent)
+                      <textarea id="waCfgBusinessContext" rows="3" placeholder="Short description of the business, listings focus, tone, etc." style="width:100%;resize:vertical;font-family:inherit;"></textarea>
+                    </label>
+                    <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
+                      <button type="button" id="waCfgSaveBtn">Save WhatsApp settings</button>
+                      <span class="sub" id="waCfgSaveStatus"></span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -709,7 +748,13 @@
     <div class="modal-body">
       <div class="na-row" style="grid-template-columns:1fr 1fr;margin-bottom:14px;">
         <div class="na-field"><label for="reLeadName">Name</label><input type="text" id="reLeadName" placeholder="e.g. Ravi Malhotra"></div>
-        <div class="na-field"><label for="reLeadPhone">Phone</label><input type="text" id="reLeadPhone" placeholder="98200XXXXX"></div>
+        <div class="na-field">
+          <label for="reLeadPhone">Phone</label>
+          <div style="display:flex;gap:6px;">
+            <input type="text" id="reLeadCountryCode" placeholder="CC" value="971" title="Country code, e.g. 971 for UAE, 91 for India — WhatsApp sends fail silently without one" style="width:56px;flex:0 0 56px;">
+            <input type="text" id="reLeadPhone" placeholder="Phone, without country code" style="flex:1;">
+          </div>
+        </div>
       </div>
       <div class="na-field" style="margin-bottom:14px;"><label for="reLeadEmail">Email</label><input type="text" id="reLeadEmail" placeholder="ravi@example.com"></div>
       <div class="na-field" style="margin-bottom:14px;"><label for="reLeadProperty">Property interest</label><input type="text" id="reLeadProperty" placeholder="e.g. Skyline Heights, Andheri (2BHK)"></div>

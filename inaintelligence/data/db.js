@@ -14,6 +14,65 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+// Self-healing migration: adds delivery-status tracking columns to
+// re_wa_messages if they don't already exist. Safe to run on every boot —
+// ADD COLUMN IF NOT EXISTS is a no-op once the columns are there. This lets
+// an already-deployed database pick up the new columns on next deploy
+// without a separate manual migration step.
+(async function ensureWaMessageStatusColumns() {
+  try {
+    await pool.query(`
+      ALTER TABLE re_wa_messages
+        ADD COLUMN IF NOT EXISTS wa_message_id text,
+        ADD COLUMN IF NOT EXISTS status text,
+        ADD COLUMN IF NOT EXISTS status_detail text
+    `);
+  } catch (err) {
+    console.error('[db] failed to ensure re_wa_messages status columns', err.message);
+  }
+})();
+
+// Same self-healing approach: adds a dedicated country_code column to
+// re_leads. Previously the "Add lead" form only had a single Phone box, so
+// numbers got entered inconsistently — some with a "+" and dial code typed
+// in, most without any country code at all — and that raw text went straight
+// to WhatsApp's send API, where a missing or malformed country code causes a
+// silent per-contact failure. `phone` continues to store the full,
+// digits-only number (what sending/matching code already expects); this
+// column additionally records just the dial code so the Edit-lead form can
+// pre-select it and so it's no longer smushed together with the local number.
+(async function ensureReLeadCountryCodeColumn() {
+  try {
+    await pool.query(`ALTER TABLE re_leads ADD COLUMN IF NOT EXISTS country_code text`);
+  } catch (err) {
+    console.error('[db] failed to ensure re_leads.country_code column', err.message);
+  }
+})();
+
+// Same self-healing approach for the per-account WhatsApp config table —
+// lets multiple real_estate accounts each run their own WhatsApp Business
+// number + agent persona instead of sharing the single .env-configured one.
+(async function ensureWaConfigTable() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS re_whatsapp_config (
+        account_id       text PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+        phone_number_id  text,
+        access_token     text,
+        business_number  text,
+        template_name    text,
+        template_lang    text NOT NULL DEFAULT 'en',
+        agent_name       text,
+        business_name    text,
+        business_context text,
+        updated_at       timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+  } catch (err) {
+    console.error('[db] failed to ensure re_whatsapp_config table', err.message);
+  }
+})();
+
 function id(prefix) {
   return prefix + '_' + Math.random().toString(36).slice(2, 9);
 }
@@ -481,7 +540,7 @@ async function getAccountDetail(accountId) {
         activeBrokers: Number(d.active_brokers) || 0
       },
       leads: leads.map((l) => ({
-        id: l.id, name: l.name, phone: l.phone, email: l.email, source: l.source,
+        id: l.id, name: l.name, phone: l.phone, countryCode: l.country_code, email: l.email, source: l.source,
         propertyInterest: l.property_interest, budget: Number(l.budget) || 0, status: l.status,
         brokerId: l.broker_id, broker: l.broker_name, nationality: l.nationality,
         dateReceived: l.date_received, lastFollowup: l.last_followup, nextFollowup: l.next_followup,
@@ -725,14 +784,14 @@ async function enforceSpeedToLeadSLA(accountId) {
   return { reassigned };
 }
 
-async function addRELead(accountId, { name, phone, email, source, propertyInterest, budget, status, brokerId, nextFollowup, remarks, nationality }, actorName) {
+async function addRELead(accountId, { name, phone, countryCode, email, source, propertyInterest, budget, status, brokerId, nextFollowup, remarks, nationality }, actorName) {
   if (!name) return { error: 'Lead name is required.' };
   const leadStatus = RE_LEAD_STATUSES.includes(status) ? status : 'New';
   const leadId = id('re_lead');
   await pool.query(
-    `INSERT INTO re_leads (id, account_id, name, phone, email, source, property_interest, budget, status, broker_id, date_received, next_followup, remarks, nationality, assigned_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, CURRENT_DATE, $11, $12, $13, $14)`,
-    [leadId, accountId, name, phone || null, email || null, source || 'Manual Entry', propertyInterest || null, Number(budget) || 0, leadStatus, brokerId || null, nextFollowup || null, remarks || null, nationality || null, brokerId ? new Date() : null]
+    `INSERT INTO re_leads (id, account_id, name, phone, country_code, email, source, property_interest, budget, status, broker_id, date_received, next_followup, remarks, nationality, assigned_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, CURRENT_DATE, $12, $13, $14, $15)`,
+    [leadId, accountId, name, phone ? withCountryCode(phone, countryCode) : null, countryCode || null, email || null, source || 'Manual Entry', propertyInterest || null, Number(budget) || 0, leadStatus, brokerId || null, nextFollowup || null, remarks || null, nationality || null, brokerId ? new Date() : null]
   );
   await pool.query(
     'INSERT INTO activity (id, account_id, text, actor_name, re_lead_id) VALUES ($1,$2,$3,$4,$5)',
@@ -741,7 +800,7 @@ async function addRELead(accountId, { name, phone, email, source, propertyIntere
   return { ok: true, id: leadId };
 }
 
-async function updateRELead(accountId, leadId, { name, phone, email, source, propertyInterest, budget, status, brokerId, nextFollowup, remarks, nationality }, actorName) {
+async function updateRELead(accountId, leadId, { name, phone, countryCode, email, source, propertyInterest, budget, status, brokerId, nextFollowup, remarks, nationality }, actorName) {
   const { rows } = await pool.query('SELECT * FROM re_leads WHERE id=$1 AND account_id=$2', [leadId, accountId]);
   if (!rows[0]) return { error: 'Lead not found.' };
   if (!name) return { error: 'Lead name is required.' };
@@ -750,9 +809,9 @@ async function updateRELead(accountId, leadId, { name, phone, email, source, pro
   const brokerChanged = newBrokerId !== rows[0].broker_id;
 
   await pool.query(
-    `UPDATE re_leads SET name=$1, phone=$2, email=$3, source=$4, property_interest=$5, budget=$6, status=$7, broker_id=$8, next_followup=$9, remarks=$10, nationality=$11${brokerChanged ? ', assigned_at=' + (newBrokerId ? 'now()' : 'NULL') : ''}
-     WHERE id=$12`,
-    [name, phone || null, email || null, source || null, propertyInterest || null, Number(budget) || 0, leadStatus, newBrokerId, nextFollowup || null, remarks || null, nationality || null, leadId]
+    `UPDATE re_leads SET name=$1, phone=$2, country_code=$3, email=$4, source=$5, property_interest=$6, budget=$7, status=$8, broker_id=$9, next_followup=$10, remarks=$11, nationality=$12${brokerChanged ? ', assigned_at=' + (newBrokerId ? 'now()' : 'NULL') : ''}
+     WHERE id=$13`,
+    [name, phone ? withCountryCode(phone, countryCode) : null, countryCode || null, email || null, source || null, propertyInterest || null, Number(budget) || 0, leadStatus, newBrokerId, nextFollowup || null, remarks || null, nationality || null, leadId]
   );
   const note = rows[0].status !== leadStatus ? ` — stage ${rows[0].status} → ${leadStatus}` : '';
   await pool.query(
@@ -803,9 +862,9 @@ async function bulkAddRELeads(accountId, rows, actorName) {
     const status = RE_LEAD_STATUSES.includes(r.status) ? r.status : 'New';
     const leadId = id('re_lead');
     await pool.query(
-      `INSERT INTO re_leads (id, account_id, name, phone, email, source, property_interest, budget, status, broker_id, date_received, next_followup, remarks, nationality, assigned_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, COALESCE($11::date, CURRENT_DATE), $12, $13, $14, $15)`,
-      [leadId, accountId, name, r.phone || null, r.email || null, r.source || 'Excel Import', r.propertyInterest || null,
+      `INSERT INTO re_leads (id, account_id, name, phone, country_code, email, source, property_interest, budget, status, broker_id, date_received, next_followup, remarks, nationality, assigned_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, COALESCE($12::date, CURRENT_DATE), $13, $14, $15, $16)`,
+      [leadId, accountId, name, r.phone ? withCountryCode(r.phone, r.countryCode) : null, r.countryCode || null, r.email || null, r.source || 'Excel Import', r.propertyInterest || null,
        Number(r.budget) || 0, status, brokerId, r.dateReceived || null, r.nextFollowup || null, r.remarks || null, r.nationality || null, brokerId ? new Date() : null]
     );
     added++;
@@ -1001,6 +1060,23 @@ function normalizeWAPhone(phone) {
   return String(phone || '').replace(/\D/g, '');
 }
 
+/**
+ * Builds the full WhatsApp-ready phone number (country code + local number,
+ * digits only) from whatever the Add/Edit lead form submitted. Mirrors the
+ * same helper in the sibling whatsapp-outreach-agent project, which already
+ * solved this: if `phone` is 10 digits or fewer it's treated as a local
+ * number missing its country code and `countryCode` (or DEFAULT_COUNTRY_CODE)
+ * is prepended; if it's already longer than 10 digits it's assumed to
+ * already include one and is left as-is, so editing an existing lead without
+ * touching the phone field never double-prefixes it.
+ */
+function withCountryCode(phone, countryCode) {
+  const digits = normalizeWAPhone(phone);
+  const cc = normalizeWAPhone(countryCode || process.env.DEFAULT_COUNTRY_CODE || '971');
+  if (cc && digits.length > 0 && digits.length <= 10) return cc + digits;
+  return digits;
+}
+
 async function findOrCreateREWALead(accountId, phone, name) {
   const cleanPhone = normalizeWAPhone(phone);
   // Compare digits-only on both sides — manually-added leads (via the
@@ -1037,20 +1113,45 @@ async function findOrCreateREWALead(accountId, phone, name) {
   return created[0];
 }
 
-async function addREWAMessage(accountId, leadId, direction, message) {
+/**
+ * @param {string} [waMessageId] — the wamid returned by Meta's send API for
+ *   outbound messages. Stored so a later async delivery-status webhook (see
+ *   whatsappClient.parseStatusUpdate) can be matched back to this row.
+ */
+async function addREWAMessage(accountId, leadId, direction, message, waMessageId, opts) {
+  // opts lets callers record a send that failed before Meta ever returned a
+  // wamid (e.g. bad recipient number, template/API error) so it still shows
+  // up in the lead's WhatsApp history instead of only existing in a one-time
+  // toast the admin may not have seen.
+  const status = opts?.status || (direction === 'out' ? 'sent' : null);
   await pool.query(
-    'INSERT INTO re_wa_messages (id, account_id, lead_id, direction, message) VALUES ($1,$2,$3,$4,$5)',
-    [id('wa_msg'), accountId, leadId, direction, message]
+    'INSERT INTO re_wa_messages (id, account_id, lead_id, direction, message, wa_message_id, status, status_detail) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+    [id('wa_msg'), accountId, leadId, direction, message, waMessageId || null, status, opts?.statusDetail || null]
+  );
+}
+
+/** Called from the /webhook handler when Meta posts an async delivery-status
+ * update (sent → delivered → read, or failed) for a wamid we sent earlier. */
+async function updateREWAMessageStatus(waMessageId, status, statusDetail) {
+  if (!waMessageId) return;
+  await pool.query(
+    `UPDATE re_wa_messages SET status=$2, status_detail=$3
+     WHERE wa_message_id=$1
+       AND (status IS DISTINCT FROM 'read')`, // don't let a stale 'delivered' overwrite a later 'read'
+    [waMessageId, status, statusDetail || null]
   );
 }
 
 async function getREWAConversation(accountId, leadId, limit) {
   const { rows } = await pool.query(
-    `SELECT direction, message, created_at FROM re_wa_messages
+    `SELECT direction, message, status, status_detail, created_at FROM re_wa_messages
      WHERE account_id=$1 AND lead_id=$2 ORDER BY created_at DESC LIMIT $3`,
     [accountId, leadId, limit || 50]
   );
-  return rows.reverse().map((r) => ({ direction: r.direction, message: r.message, at: new Date(r.created_at).getTime() }));
+  return rows.reverse().map((r) => ({
+    direction: r.direction, message: r.message, status: r.status || null,
+    statusDetail: r.status_detail || null, at: new Date(r.created_at).getTime(),
+  }));
 }
 
 /** Wipes the stored WhatsApp thread with a lead — the "Clear chat" button.
@@ -1064,10 +1165,11 @@ async function clearREWAConversation(accountId, leadId) {
 async function getRecentREWAThreads(accountId, limit) {
   const { rows } = await pool.query(
     `SELECT l.id AS lead_id, l.name, l.phone, l.status, l.wa_conversation_stage,
-            m.message AS last_message, m.direction AS last_direction, m.created_at AS last_message_at
+            m.message AS last_message, m.direction AS last_direction, m.created_at AS last_message_at,
+            m.status AS last_message_status
      FROM re_leads l
      JOIN LATERAL (
-       SELECT message, direction, created_at FROM re_wa_messages
+       SELECT message, direction, created_at, status FROM re_wa_messages
        WHERE lead_id = l.id ORDER BY created_at DESC LIMIT 1
      ) m ON true
      WHERE l.account_id=$1
@@ -1077,7 +1179,8 @@ async function getRecentREWAThreads(accountId, limit) {
   );
   return rows.map((r) => ({
     leadId: r.lead_id, name: r.name, phone: r.phone, status: r.status, stage: r.wa_conversation_stage,
-    lastMessage: r.last_message, lastDirection: r.last_direction, lastMessageAt: new Date(r.last_message_at).getTime()
+    lastMessage: r.last_message, lastDirection: r.last_direction, lastMessageAt: new Date(r.last_message_at).getTime(),
+    lastMessageStatus: r.last_message_status || null
   }));
 }
 
@@ -1128,6 +1231,102 @@ async function resolveWhatsAppAccountId() {
   const { rows } = await pool.query(`SELECT id FROM accounts WHERE module_kind='real_estate' ORDER BY starts_at ASC LIMIT 2`);
   if (rows.length === 1) return rows[0].id;
   return null; // none found, or more than one and no WHATSAPP_ACCOUNT_ID override set
+}
+
+/**
+ * Multi-tenant webhook routing: given the `phone_number_id` Meta includes in
+ * every webhook payload (both inbound messages and async status updates),
+ * find which account owns that number. Checks re_whatsapp_config first (real
+ * customer accounts each running their own WhatsApp number); falls back to
+ * the legacy single-account/.env resolution when the incoming number matches
+ * WHATSAPP_PHONE_NUMBER_ID, so the original demo account keeps working
+ * without needing a re_whatsapp_config row.
+ */
+async function resolveAccountByPhoneNumberId(phoneNumberId) {
+  if (!phoneNumberId) return null;
+  const { rows } = await pool.query(
+    'SELECT account_id FROM re_whatsapp_config WHERE phone_number_id=$1',
+    [phoneNumberId]
+  );
+  if (rows[0]) return rows[0].account_id;
+  if (process.env.WHATSAPP_PHONE_NUMBER_ID && phoneNumberId === process.env.WHATSAPP_PHONE_NUMBER_ID) {
+    return resolveWhatsAppAccountId();
+  }
+  return null;
+}
+
+/**
+ * The WhatsApp + agent-persona config actually in effect for an account —
+ * its own re_whatsapp_config row if one exists, otherwise the legacy .env
+ * values (only meaningful for whichever account resolveWhatsAppAccountId()
+ * points at). This is what server.js/whatsappAgent.js should call rather
+ * than reading process.env directly, so the app works the same whether an
+ * account has its own WhatsApp number configured or is still riding on the
+ * original env-var setup.
+ */
+async function getEffectiveWhatsAppConfig(accountId) {
+  const { rows } = await pool.query('SELECT * FROM re_whatsapp_config WHERE account_id=$1', [accountId]);
+  const row = rows[0];
+  if (row && row.phone_number_id && row.access_token) {
+    return {
+      phoneNumberId: row.phone_number_id,
+      accessToken: row.access_token,
+      businessNumber: row.business_number || null,
+      templateName: row.template_name || null,
+      templateLang: row.template_lang || 'en',
+      agentName: row.agent_name || 'Zara',
+      businessName: row.business_name || 'the team',
+      businessContext: row.business_context || '',
+      source: 'account',
+    };
+  }
+  // Fallback: legacy env-var config, for the original demo account.
+  return {
+    phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || null,
+    accessToken: process.env.WHATSAPP_TOKEN || null,
+    businessNumber: null,
+    templateName: process.env.OUTREACH_TEMPLATE_NAME || null,
+    templateLang: process.env.OUTREACH_TEMPLATE_LANG || 'en',
+    agentName: process.env.AGENT_NAME || 'Zara',
+    businessName: process.env.BUSINESS_NAME || 'the team',
+    businessContext: process.env.BUSINESS_CONTEXT || '',
+    source: 'env',
+  };
+}
+
+/** Upsert used by the WhatsApp setup UI to save an account's own credentials/persona. */
+async function upsertREWhatsAppConfig(accountId, fields) {
+  const {
+    phoneNumberId, accessToken, businessNumber, templateName, templateLang,
+    agentName, businessName, businessContext,
+  } = fields;
+  await pool.query(
+    `INSERT INTO re_whatsapp_config (account_id, phone_number_id, access_token, business_number, template_name, template_lang, agent_name, business_name, business_context, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())
+     ON CONFLICT (account_id) DO UPDATE SET
+       phone_number_id = EXCLUDED.phone_number_id,
+       access_token = EXCLUDED.access_token,
+       business_number = EXCLUDED.business_number,
+       template_name = EXCLUDED.template_name,
+       template_lang = EXCLUDED.template_lang,
+       agent_name = EXCLUDED.agent_name,
+       business_name = EXCLUDED.business_name,
+       business_context = EXCLUDED.business_context,
+       updated_at = now()`,
+    [accountId, phoneNumberId || null, accessToken || null, businessNumber || null, templateName || null,
+      templateLang || 'en', agentName || null, businessName || null, businessContext || null]
+  );
+}
+
+/** Read-only fetch for the setup UI — never returns the access_token itself, just whether one's on file. */
+async function getREWhatsAppConfigForUI(accountId) {
+  const { rows } = await pool.query(
+    `SELECT phone_number_id, business_number, template_name, template_lang, agent_name, business_name, business_context,
+            (access_token IS NOT NULL AND access_token != '') AS has_token, updated_at
+     FROM re_whatsapp_config WHERE account_id=$1`,
+    [accountId]
+  );
+  return rows[0] || null;
 }
 
 /**
@@ -1336,7 +1535,7 @@ module.exports = {
   addRELeadNote, getRELeadActivity, getREBrokerActivity, getREInventoryActivity,
   bulkAddRELeads, getREMonthlyReport,
   addRESiteVisit, updateRESiteVisit,
-  findOrCreateREWALead, addREWAMessage, getREWAConversation, clearREWAConversation, getRecentREWAThreads, applyREWAAgentUpdate, searchREInventory, getREInventoryImages, getREInventoryImagesByName,
-  resolveWhatsAppAccountId, getRELeadPhone,
+  findOrCreateREWALead, addREWAMessage, updateREWAMessageStatus, getREWAConversation, clearREWAConversation, getRecentREWAThreads, applyREWAAgentUpdate, searchREInventory, getREInventoryImages, getREInventoryImagesByName,
+  resolveWhatsAppAccountId, resolveAccountByPhoneNumberId, getEffectiveWhatsAppConfig, upsertREWhatsAppConfig, getREWhatsAppConfigForUI, getRELeadPhone,
   createAccount, MODULE_PRESETS, LICENSE_TERMS
 };

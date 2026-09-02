@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS re_leads (
   account_id        text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   name              text NOT NULL,
   phone             text,
+  country_code      text,
   email             text,
   source            text,
   property_interest text,
@@ -181,14 +182,35 @@ CREATE INDEX IF NOT EXISTS idx_re_site_visits_scheduled ON re_site_visits(schedu
 -- event log) since this is a raw chat transcript the Claude agent replays as
 -- context on every reply.
 CREATE TABLE IF NOT EXISTS re_wa_messages (
-  id          text PRIMARY KEY,
-  account_id  text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  lead_id     text NOT NULL REFERENCES re_leads(id) ON DELETE CASCADE,
-  direction   text NOT NULL, -- 'in' | 'out'
-  message     text NOT NULL,
-  created_at  timestamptz NOT NULL DEFAULT now()
+  id             text PRIMARY KEY,
+  account_id     text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  lead_id        text NOT NULL REFERENCES re_leads(id) ON DELETE CASCADE,
+  direction      text NOT NULL, -- 'in' | 'out'
+  message        text NOT NULL,
+  wa_message_id  text, -- Meta's wamid for outbound messages, used to match async delivery-status webhooks back to this row
+  status         text, -- outbound only: 'sent' | 'delivered' | 'read' | 'failed'
+  status_detail  text, -- error message when status = 'failed'
+  created_at     timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_re_wa_messages_lead ON re_wa_messages(lead_id, created_at);
+
+-- Per-account WhatsApp Business config. Each real_estate account can run its
+-- own WhatsApp number + agent persona instead of everyone sharing the single
+-- WHATSAPP_TOKEN/PHONE_NUMBER_ID/AGENT_NAME/etc. in .env. Those env vars are
+-- kept as a fallback for the original demo account only — see
+-- db.js#resolveAccountByPhoneNumberId and whatsappClient.js.
+CREATE TABLE IF NOT EXISTS re_whatsapp_config (
+  account_id       text PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+  phone_number_id  text,       -- Meta phone_number_id for this account's WhatsApp Business number
+  access_token     text,       -- Meta permanent access token for sending on that number
+  business_number  text,       -- display phone number, shown in the setup UI for reference
+  template_name    text,       -- approved outreach template name for this account
+  template_lang    text NOT NULL DEFAULT 'en',
+  agent_name       text,       -- e.g. "Zara" — this account's AI agent persona name
+  business_name    text,       -- shown to leads ("...for {business_name}")
+  business_context text,       -- free-text context fed into the agent's system prompt
+  updated_at       timestamptz NOT NULL DEFAULT now()
+);
 CREATE INDEX IF NOT EXISTS idx_re_wa_messages_account ON re_wa_messages(account_id);
 
 -- Extra business detail fields, added after the first Real Estate CRM
