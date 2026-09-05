@@ -81,6 +81,26 @@ const pool = new Pool({
 // (account_id, name) instead of a globally-unique person name).
 (async function ensureCfTables() {
   try {
+    // A cf_people/cf_transactions pair may already exist in this database
+    // from the standalone cashflow-tracker prototype, if its .env was ever
+    // pointed at this same Neon connection string during testing — that
+    // version used a globally-unique `name` with no account_id column at
+    // all (SERIAL ids, not text). Detect that legacy shape and rename it
+    // out of the way (once) rather than deleting it, so the new
+    // account-scoped tables below can be created cleanly without losing
+    // whatever test data is sitting in the old ones.
+    const legacyCol = await pool.query(`
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='cf_people' AND column_name='account_id'
+    `);
+    if (!legacyCol.rows[0]) {
+      const legacyTable = await pool.query(`SELECT to_regclass('public.cf_people') AS t`);
+      if (legacyTable.rows[0] && legacyTable.rows[0].t) {
+        await pool.query(`ALTER TABLE cf_people RENAME TO cf_people_legacy`);
+        await pool.query(`ALTER TABLE IF EXISTS cf_transactions RENAME TO cf_transactions_legacy`);
+        console.warn('[db] renamed pre-existing cf_people/cf_transactions (no account_id column — the standalone cashflow-tracker prototype\'s tables) to *_legacy so the new multi-tenant Cash Flow module could create its own.');
+      }
+    }
     await pool.query(`
       CREATE TABLE IF NOT EXISTS cf_people (
         id          text PRIMARY KEY,
