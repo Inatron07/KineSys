@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Log a payment — InaIntelligence</title>
+<style>
+  :root{
+    --bg:#eef1f7; --card:#ffffff; --surface2:#f3f5fb; --border:#dbe1ee;
+    --text:#101a30; --muted:#4a5570; --faint:#838ea5;
+    --cyan:#22d3ee; --violet:#7c5cff; --grad:linear-gradient(135deg,var(--cyan),var(--violet));
+    --accent:#0f6fb0; --danger:#d64545; --ok:#0e8f5f;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px;}
+  .brand{display:flex;align-items:center;gap:8px;justify-content:center;margin:4px 0 18px;font-weight:700;font-size:15px;}
+  .brand .logo-mark{width:26px;height:26px;flex-shrink:0;}
+  .brand .accent{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .brand .brand-sep{color:var(--faint);font-weight:400;margin:0 3px;}
+  .card{max-width:480px;margin:0 auto;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;box-shadow:0 1px 3px rgba(16,26,48,.06);}
+  h1{font-size:18px;margin:0 0 4px;}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 18px;}
+  label{display:block;font-size:12px;color:var(--muted);margin:14px 0 6px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;}
+  select, input[type=text], input[type=number], input[type=date], textarea{
+    width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:15px;
+  }
+  select:focus, input:focus, textarea:focus{outline:none;border-color:var(--accent);}
+  .toggle{display:flex;gap:8px;margin-top:14px;}
+  .toggle button{flex:1;padding:11px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);font-size:14px;font-weight:600;cursor:pointer;}
+  .toggle button.active{background:var(--accent);border-color:var(--accent);color:#ffffff;}
+  .panel{display:none;}
+  .panel.show{display:block;}
+  .cam-wrap{position:relative;border-radius:12px;overflow:hidden;background:#000;margin-top:12px;aspect-ratio:3/4;display:none;}
+  .cam-wrap.show{display:block;}
+  video, canvas.frame-preview{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+  .guide{position:absolute;inset:8%;border:2px dashed rgba(255,255,255,.75);border-radius:8px;pointer-events:none;}
+  .guide::after{content:'Line the bill up inside this frame';position:absolute;bottom:-26px;left:0;right:0;text-align:center;color:#fff;font-size:11px;text-shadow:0 1px 2px rgba(0,0,0,.8);}
+  .cam-actions{position:absolute;bottom:12px;left:0;right:0;display:flex;justify-content:center;gap:10px;}
+  .cam-actions button{padding:10px 18px;border-radius:999px;border:none;background:#fff;color:#111;font-weight:700;font-size:14px;cursor:pointer;}
+  .cam-actions button.secondary{background:rgba(0,0,0,.55);color:#fff;}
+  .file-row{display:flex;gap:8px;margin-top:12px;align-items:center;}
+  .file-row button{padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;cursor:pointer;}
+  .file-name{color:var(--muted);font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .preview-thumb{margin-top:12px;max-width:100%;border-radius:10px;border:1px solid var(--border);display:none;}
+  .preview-thumb.show{display:block;}
+  .submit-btn{width:100%;margin-top:20px;padding:14px;border:none;border-radius:12px;background:var(--ok);color:#ffffff;font-size:15px;font-weight:700;cursor:pointer;}
+  .submit-btn:disabled{opacity:.6;cursor:default;}
+  .toast{position:fixed;left:16px;right:16px;bottom:16px;max-width:448px;margin:0 auto;padding:12px 16px;border-radius:10px;font-size:14px;text-align:center;display:none;z-index:10;box-shadow:0 4px 16px rgba(16,26,48,.18);}
+  .toast.ok{background:var(--ok);color:#ffffff;}
+  .toast.err{background:var(--danger);color:#ffffff;}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px;}
+  .error-card{max-width:480px;margin:60px auto 0;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;text-align:center;color:var(--muted);}
+</style>
+</head>
+<body>
+  <div class="brand">
+    <img src="logo.svg" class="logo-mark" alt="KineSys">
+    <span>Kine<span class="accent">Sys</span></span><span class="brand-sep">/</span><span>InaIntelligence</span>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var params = new URLSearchParams(window.location.search);
+  var accountId = params.get('account');
+  var app = $('app');
+
+  if (!accountId) {
+    app.innerHTML = '<div class="error-card">This link is missing its account. Ask your admin for the correct submit link.</div>';
+    return;
+  }
+
+  app.innerHTML =
+    '<div class="card">' +
+      '<h1>Log a payment</h1>' +
+      '<p class="sub">Pick your name, then log either a bill (with photo) or a payment with no bill.</p>' +
+      '<label for="person">Name</label>' +
+      '<select id="person"><option value="">Loading…</option></select>' +
+      '<div class="toggle">' +
+        '<button id="tabBill" class="active" type="button">Bill (has receipt)</button>' +
+        '<button id="tabNoBill" type="button">No bill</button>' +
+      '</div>' +
+      '<div id="panelBill" class="panel show">' +
+        '<label>Photo / document of the bill</label>' +
+        '<div id="camWrap" class="cam-wrap">' +
+          '<video id="camVideo" autoplay playsinline muted></video>' +
+          '<div class="guide"></div>' +
+          '<div class="cam-actions">' +
+            '<button type="button" class="secondary" id="camCancel">Cancel</button>' +
+            '<button type="button" id="camShoot">Capture</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="file-row">' +
+          '<button type="button" id="openCamBtn">📷 Use camera</button>' +
+          '<button type="button" id="pickFileBtn">📁 Choose file / PDF</button>' +
+        '</div>' +
+        '<input type="file" id="fileInput" accept="image/*,application/pdf" style="display:none;">' +
+        '<div class="file-name" id="fileName"></div>' +
+        '<img id="previewImg" class="preview-thumb" alt="preview">' +
+        '<label for="billAmount">Amount (if you know it — optional but helps catch misreads)</label>' +
+        '<input type="number" id="billAmount" placeholder="e.g. 350" min="0" step="0.01">' +
+        '<label for="billDate">Date</label>' +
+        '<input type="date" id="billDate">' +
+      '</div>' +
+      '<div id="panelNoBill" class="panel">' +
+        '<label for="nbAmount">Amount</label>' +
+        '<input type="number" id="nbAmount" placeholder="e.g. 150" min="0" step="0.01">' +
+        '<label for="nbTo">Who it went to</label>' +
+        '<input type="text" id="nbTo" placeholder="e.g. Shamas, ATM, Salary - Haris">' +
+        '<label for="nbDate">Date</label>' +
+        '<input type="date" id="nbDate">' +
+      '</div>' +
+      '<label for="submittedBy">Your name (optional, if different from above)</label>' +
+      '<input type="text" id="submittedBy" placeholder="Only if someone else is entering this for them">' +
+      '<button class="submit-btn" id="submitBtn" type="button">Submit</button>' +
+      '<div class="hint" id="statusHint"></div>' +
+    '</div>';
+
+  var state = { mode: 'bill', stream: null, capturedBlob: null, capturedMime: null, capturedIsPdf: false };
+
+  function toast(msg, ok) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.className = 'toast show ' + (ok ? 'ok' : 'err');
+    t.style.display = 'block';
+    setTimeout(function () { t.style.display = 'none'; }, 3500);
+  }
+
+  var today = new Date().toISOString().slice(0, 10);
+  $('billDate').value = today;
+  $('nbDate').value = today;
+
+  // ---- load people ----
+  fetch('/api/public/cf/' + encodeURIComponent(accountId) + '/people')
+    .then(function (r) {
+      if (!r.ok) throw new Error('bad-account');
+      return r.json();
+    })
+    .then(function (people) {
+      var sel = $('person');
+      sel.innerHTML = '<option value="">Select your name…</option>' + people.map(function (p) {
+        return '<option value="' + p.id + '">' + p.name + '</option>';
+      }).join('');
+    })
+    .catch(function () {
+      app.innerHTML = '<div class="error-card">This link isn\'t valid. Ask your admin for the correct submit link.</div>';
+    });
+
+  // ---- bill / no-bill toggle ----
+  $('tabBill').addEventListener('click', function () { setMode('bill'); });
+  $('tabNoBill').addEventListener('click', function () { setMode('no_bill'); });
+  function setMode(mode) {
+    state.mode = mode;
+    $('tabBill').classList.toggle('active', mode === 'bill');
+    $('tabNoBill').classList.toggle('active', mode === 'no_bill');
+    $('panelBill').classList.toggle('show', mode === 'bill');
+    $('panelNoBill').classList.toggle('show', mode === 'no_bill');
+  }
+
+  // ---- camera capture with alignment guide ----
+  $('openCamBtn').addEventListener('click', function () {
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .then(function (stream) {
+        state.stream = stream;
+        $('camVideo').srcObject = stream;
+        $('camWrap').classList.add('show');
+      })
+      .catch(function () { toast('Could not open the camera — use "Choose file" instead.', false); });
+  });
+  $('camCancel').addEventListener('click', stopCamera);
+  function stopCamera() {
+    if (state.stream) state.stream.getTracks().forEach(function (t) { t.stop(); });
+    state.stream = null;
+    $('camWrap').classList.remove('show');
+  }
+  $('camShoot').addEventListener('click', function () {
+    var video = $('camVideo');
+    var canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    canvas.toBlob(function (blob) {
+      state.capturedBlob = blob;
+      state.capturedMime = 'image/jpeg';
+      state.capturedIsPdf = false;
+      $('fileName').textContent = 'Photo captured';
+      var img = $('previewImg');
+      img.src = URL.createObjectURL(blob);
+      img.classList.add('show');
+      stopCamera();
+    }, 'image/jpeg', 0.9);
+  });
+
+  // ---- plain file picker fallback ----
+  $('pickFileBtn').addEventListener('click', function () { $('fileInput').click(); });
+  $('fileInput').addEventListener('change', function () {
+    var f = this.files[0];
+    if (!f) return;
+    state.capturedBlob = f;
+    state.capturedMime = f.type || 'application/octet-stream';
+    state.capturedIsPdf = state.capturedMime === 'application/pdf';
+    $('fileName').textContent = f.name;
+    var img = $('previewImg');
+    if (state.capturedIsPdf) {
+      img.classList.remove('show');
+    } else {
+      img.src = URL.createObjectURL(f);
+      img.classList.add('show');
+    }
+  });
+
+  // ---- submit ----
+  $('submitBtn').addEventListener('click', function () {
+    var personId = $('person').value;
+    if (!personId) return toast('Select your name first.', false);
+    var submittedBy = $('submittedBy').value.trim();
+    var btn = $('submitBtn');
+    var base = '/api/public/cf/' + encodeURIComponent(accountId);
+
+    if (state.mode === 'bill') {
+      if (!state.capturedBlob) return toast('Take a photo or choose a file of the bill.', false);
+      var fd = new FormData();
+      fd.append('personId', personId);
+      fd.append('txnDate', $('billDate').value);
+      if ($('billAmount').value) fd.append('amount', $('billAmount').value);
+      if (submittedBy) fd.append('submittedBy', submittedBy);
+      fd.append('file', state.capturedBlob, state.capturedIsPdf ? 'bill.pdf' : 'bill.jpg');
+
+      btn.disabled = true; btn.textContent = 'Uploading…';
+      fetch(base + '/transactions/bill', { method: 'POST', body: fd })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          btn.disabled = false; btn.textContent = 'Submit';
+          if (!res.ok) return toast(res.d.error || 'Could not submit.', false);
+          toast('Bill logged.', true);
+          resetForm();
+        })
+        .catch(function () { btn.disabled = false; btn.textContent = 'Submit'; toast('Network error — try again.', false); });
+    } else {
+      var amount = $('nbAmount').value;
+      var to = $('nbTo').value.trim();
+      if (!amount || Number(amount) <= 0) return toast('Enter an amount.', false);
+      if (!to) return toast('Enter who it went to.', false);
+
+      btn.disabled = true; btn.textContent = 'Saving…';
+      fetch(base + '/transactions/no-bill', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ personId: personId, amount: amount, counterparty: to, txnDate: $('nbDate').value, submittedBy: submittedBy || null })
+      }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          btn.disabled = false; btn.textContent = 'Submit';
+          if (!res.ok) return toast(res.d.error || 'Could not submit.', false);
+          toast('Payment logged.', true);
+          resetForm();
+        })
+        .catch(function () { btn.disabled = false; btn.textContent = 'Submit'; toast('Network error — try again.', false); });
+    }
+  });
+
+  function resetForm() {
+    state.capturedBlob = null;
+    $('fileName').textContent = '';
+    $('previewImg').classList.remove('show');
+    $('billAmount').value = '';
+    $('nbAmount').value = '';
+    $('nbTo').value = '';
+  }
+})();
+</script>
+</body>
+</html>

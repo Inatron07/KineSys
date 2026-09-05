@@ -266,6 +266,45 @@ CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_id);
 CREATE INDEX IF NOT EXISTS idx_activity_account ON activity(account_id, at DESC);
 CREATE INDEX IF NOT EXISTS idx_team_account ON team_members(account_id);
 
+-- ---------- Cash Flow Tracker module ----------
+-- Multi-tenant version of the standalone cashflow-tracker app: same event-log
+-- design (one row per received/bill/no_bill event, daily ledger reconstructed
+-- by summing), but every row carries account_id so multiple cash_flow
+-- accounts can share this database without seeing each other's data.
+CREATE TABLE IF NOT EXISTS cf_people (
+  id          text PRIMARY KEY,
+  account_id  text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  name        text NOT NULL,
+  active      boolean NOT NULL DEFAULT true,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cf_people_account_name ON cf_people(account_id, name);
+CREATE INDEX IF NOT EXISTS idx_cf_people_account ON cf_people(account_id);
+
+CREATE TABLE IF NOT EXISTS cf_transactions (
+  id             text PRIMARY KEY,
+  account_id     text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  person_id      text NOT NULL REFERENCES cf_people(id) ON DELETE CASCADE,
+  type           text NOT NULL CHECK (type IN ('received', 'bill', 'no_bill')),
+  amount         numeric NOT NULL,
+  txn_date       date NOT NULL DEFAULT CURRENT_DATE,
+  counterparty   text,
+  image_data     bytea,
+  image_mime     text,
+  extraction     jsonb,
+  confidence     numeric,
+  needs_review   boolean NOT NULL DEFAULT false,
+  reviewed_at    timestamptz,
+  reviewed_by    text,
+  submitted_by   text,
+  notes          text,
+  seen_by_admin  boolean NOT NULL DEFAULT false,
+  created_at     timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_cf_transactions_account ON cf_transactions(account_id);
+CREATE INDEX IF NOT EXISTS idx_cf_transactions_person_date ON cf_transactions(person_id, txn_date);
+CREATE INDEX IF NOT EXISTS idx_cf_transactions_needs_review ON cf_transactions(needs_review) WHERE needs_review = true;
+
 -- express-session's connect-pg-simple table (created automatically by the
 -- library too, but declared here so `npm run seed` sets it up in one pass)
 CREATE TABLE IF NOT EXISTS session (

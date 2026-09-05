@@ -7,13 +7,16 @@ const session = require('express-session');
 const pgSession = require('connect-pg-simple')(session);
 const multer = require('multer');
 const XLSX = require('xlsx');
+const ExcelJS = require('exceljs');
 const db = require('./data/db');
 const whatsapp = require('./data/whatsappClient');
 const whatsappAgent = require('./data/whatsappAgent');
+const { extractCfBill } = require('./data/cfExtract');
 
 const app = express();
 const PORT = process.env.PORT || 4100;
 const leadUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+const cfUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 
 // Behind Render's (or any) reverse proxy, req.protocol/req.get('host') only
 // report correctly if Express trusts the X-Forwarded-* headers — needed so
@@ -375,6 +378,250 @@ app.get('/api/accounts/:id/re/monthly-report', requireAuth, asyncRoute(async (re
   if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
   const report = await db.getREMonthlyReport(req.params.id);
   res.json(report);
+}));
+
+// ---------- Cash Flow Tracker module ----------
+// Ported from the standalone cashflow-tracker app. Two groups of routes:
+// authenticated admin routes under /api/accounts/:id/cf/* (same
+// canAccessAccount gate as every other account route), and a small public
+// group under /api/public/cf/:accountId/* that employees hit from the
+// shared submit link (cf-submit.html) with no login at all — mirroring how
+// /webhook above is intentionally public. findCfAccount() keeps the public
+// routes from doing anything to an account that isn't actually a
+// cash_flow-type account.
+async function findCfAccount(accountId) {
+  const account = await db.findAccount(accountId);
+  if (!account || account.type !== 'cash_flow') return null;
+  return account;
+}
+
+const CF_MONEY_FMT = '#,##0.00';
+
+// ---- authenticated (admin) ----
+app.get('/api/accounts/:id/cf/people', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  res.json(await db.getCfPeople(req.params.id));
+}));
+
+app.post('/api/accounts/:id/cf/people', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const person = await db.addCfPerson(req.params.id, req.body && req.body.name);
+  res.json(person);
+}));
+
+app.post('/api/accounts/:id/cf/received', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const { personId, amount, counterparty, txnDate, submittedBy, notes } = req.body || {};
+  if (!personId) return res.status(400).json({ error: 'Select a name.' });
+  if (!amount || Number(amount) <= 0) return res.status(400).json({ error: 'Enter an amount.' });
+  const row = await db.addCfReceived(req.params.id, { personId, amount: Number(amount), counterparty, txnDate, submittedBy, notes });
+  res.json({ ok: true, transaction: row });
+}));
+
+app.get('/api/accounts/:id/cf/summaries', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const { from, to } = req.query;
+  res.json(await db.getCfPersonSummaries(req.params.id, { from: from || null, to: to || null }));
+}));
+
+// Clears the green "new" badge — call when the admin selects a person.
+app.post('/api/accounts/:id/cf/people/:personId/mark-seen', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  await db.markCfPersonSeen(req.params.id, req.params.personId);
+  res.json({ ok: true });
+}));
+
+app.get('/api/accounts/:id/cf/transactions', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const { personId, from, to } = req.query;
+  res.json(await db.listCfTransactions(req.params.id, { personId: personId || null, from: from || null, to: to || null }));
+}));
+
+// Day-by-day ledger for one person — same shape as their Excel sheet
+// (WEEK+Date merged into one Date field here), used to render the admin
+// table with the same columns as the export instead of a flat event log.
+app.get('/api/accounts/:id/cf/ledger', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const { personId, from, to } = req.query;
+  if (!personId) return res.status(400).json({ error: 'personId is required.' });
+  res.json(await db.getCfPersonDailyLedger(req.params.id, personId, from || null, to || null));
+}));
+
+app.get('/api/accounts/:id/cf/transactions/:txnId/image', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const row = await db.getCfTransactionImage(req.params.id, req.params.txnId);
+  if (!row || !row.image_data) return res.status(404).end();
+  res.set('Content-Type', row.image_mime || 'application/octet-stream');
+  res.send(row.image_data);
+}));
+
+app.post('/api/accounts/:id/cf/transactions/:txnId/confirm', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const { amount, counterparty } = req.body || {};
+  const row = await db.confirmCfTransaction(req.params.id, req.params.txnId, { amount, counterparty, reviewedBy: actorNameFor(req.session.auth) });
+  if (!row) return res.status(404).json({ error: 'Not found.' });
+  res.json({ ok: true });
+}));
+
+app.delete('/api/accounts/:id/cf/transactions/:txnId', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const ok = await db.deleteCfTransaction(req.params.id, req.params.txnId);
+  if (!ok) return res.status(404).json({ error: 'Not found.' });
+  res.json({ ok: true });
+}));
+
+// POST (not DELETE-with-body) so this works reliably behind any proxy/client
+// that strips bodies from DELETE requests.
+app.post('/api/accounts/:id/cf/transactions/bulk-delete', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids : [];
+  if (!ids.length) return res.status(400).json({ error: 'No ids provided.' });
+  const count = await db.deleteCfTransactions(req.params.id, ids);
+  res.json({ ok: true, deleted: count });
+}));
+
+// Mirrors the client's original per-person workbook: one sheet per person,
+// one row per calendar day (not per transaction), with a running
+// PREVIOUS BALANCE -> Total cash in hand -> Total expense -> BALANCE chain
+// carried from day to day, same as their existing sheets.
+app.get('/api/accounts/:id/cf/export.xlsx', requireAuth, asyncRoute(async (req, res) => {
+  if (!canAccessAccount(req, req.params.id)) return res.status(403).json({ error: 'Not authorized for this account.' });
+  const { from, to } = req.query;
+  const people = await db.getCfPeople(req.params.id);
+  const wb = new ExcelJS.Workbook();
+  const groupFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2A44' } };
+
+  for (const person of people) {
+    const ledger = await db.getCfPersonDailyLedger(req.params.id, person.id, from || null, to || null);
+    const ws = wb.addWorksheet(person.name.slice(0, 31)); // Excel sheet-name length limit
+
+    // 13 columns, A through M — matches the client's original sheet
+    // position-for-position, including the always-blank "Altaf" column
+    // (column E in their template).
+    ws.columns = [
+      { width: 12 }, { width: 12 }, { width: 16 }, { width: 16 }, { width: 10 },
+      { width: 14 }, { width: 16 }, { width: 14 }, { width: 16 },
+      { width: 14 }, { width: 16 }, { width: 16 }, { width: 14 },
+    ];
+
+    ws.mergeCells('A1:M1');
+    ws.getCell('A1').value = `Cash Flow Record — ${person.name}`;
+    ws.getCell('A1').font = { bold: true, size: 13 };
+
+    ws.mergeCells('A2:M2');
+    ws.getCell('A2').value = `${ledger.from} to ${ledger.to}`;
+    ws.getCell('A2').font = { italic: true, color: { argb: 'FF8D9AC0' } };
+
+    const headerRow = ws.getRow(3);
+    const subRow = ws.getRow(4);
+    const singleCols = [
+      ['A', 'WEEK'], ['B', 'Date'], ['C', 'PREVIOUS BALANCE'], ['D', 'Received Amount (AED)'],
+      ['E', 'Altaf'], ['J', 'BILL AMOUNT'], ['K', 'Total cashin hand'], ['L', 'Total expense'], ['M', 'BALANCE'],
+    ];
+    singleCols.forEach(([col, label]) => {
+      ws.mergeCells(`${col}3:${col}4`);
+      ws.getCell(`${col}3`).value = label;
+    });
+    ws.mergeCells('F3:G3');
+    ws.getCell('F3').value = 'OTHERS (RECEIVED)';
+    ws.getCell('F4').value = 'AMOUNT';
+    ws.getCell('G4').value = 'NAME';
+    ws.mergeCells('H3:I3');
+    ws.getCell('H3').value = 'NO BILL (PAID)';
+    ws.getCell('H4').value = 'BILL AMOUNT';
+    ws.getCell('I4').value = 'NAME';
+
+    [headerRow, subRow].forEach((row) => {
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.font = { bold: true, color: { argb: 'FFEEF1F8' } };
+        cell.fill = groupFill;
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      });
+    });
+
+    let r = 5;
+    ledger.days.forEach((d) => {
+      const row = ws.getRow(r);
+      row.getCell(1).value = d.week;
+      row.getCell(2).value = d.date;
+      row.getCell(2).numFmt = 'dd-mmm-yyyy';
+      row.getCell(3).value = d.previousBalance;
+      row.getCell(4).value = d.receivedAmount || null;
+      row.getCell(6).value = d.othersReceivedAmount || null;
+      row.getCell(7).value = d.othersReceivedName || '';
+      row.getCell(8).value = d.noBillAmount || null;
+      row.getCell(9).value = d.noBillName || '';
+      row.getCell(10).value = d.billAmount || null;
+      row.getCell(11).value = d.totalCashInHand;
+      row.getCell(12).value = d.totalExpense;
+      row.getCell(13).value = d.balance;
+      [3, 4, 6, 8, 10, 11, 12, 13].forEach((c) => { row.getCell(c).numFmt = CF_MONEY_FMT; });
+      r += 1;
+    });
+
+    ws.views = [{ state: 'frozen', ySplit: 4 }];
+  }
+
+  if (!wb.worksheets.length) wb.addWorksheet('No data');
+
+  res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.set('Content-Disposition', `attachment; filename="cashflow-export.xlsx"`);
+  await wb.xlsx.write(res);
+  res.end();
+}));
+
+// ---- public (shared submit link, no login) ----
+app.get('/api/public/cf/:accountId/people', asyncRoute(async (req, res) => {
+  const account = await findCfAccount(req.params.accountId);
+  if (!account) return res.status(404).json({ error: 'Submit link not found.' });
+  res.json(await db.getCfPeople(req.params.accountId));
+}));
+
+app.post('/api/public/cf/:accountId/transactions/no-bill', asyncRoute(async (req, res) => {
+  const account = await findCfAccount(req.params.accountId);
+  if (!account) return res.status(404).json({ error: 'Submit link not found.' });
+  const { personId, amount, counterparty, txnDate, submittedBy, notes } = req.body || {};
+  if (!personId) return res.status(400).json({ error: 'Select a name.' });
+  if (!amount || Number(amount) <= 0) return res.status(400).json({ error: 'Enter an amount.' });
+  const row = await db.addCfNoBill(req.params.accountId, { personId, amount: Number(amount), counterparty, txnDate, submittedBy, notes });
+  res.json({ ok: true, transaction: row });
+}));
+
+app.post('/api/public/cf/:accountId/transactions/bill', cfUpload.single('file'), asyncRoute(async (req, res) => {
+  const account = await findCfAccount(req.params.accountId);
+  if (!account) return res.status(404).json({ error: 'Submit link not found.' });
+  const { personId, amount, txnDate, submittedBy, notes } = req.body || {};
+  if (!personId) return res.status(400).json({ error: 'Select a name.' });
+  if (!req.file) return res.status(400).json({ error: 'Upload or photograph the bill.' });
+
+  const extraction = await extractCfBill(req.file.buffer, req.file.mimetype);
+
+  // If the submitter also typed an amount, cross-check it against what
+  // Claude read off the bill — a mismatch is just as good a "look at this"
+  // signal as Claude's own low confidence, forcing a review either way.
+  let finalExtraction = extraction;
+  const typedAmount = amount ? Number(amount) : null;
+  if (extraction && typedAmount && Math.abs(extraction.amount - typedAmount) > Math.max(1, typedAmount * 0.02)) {
+    finalExtraction = {
+      ...extraction,
+      confidence: Math.min(extraction.confidence, 0.4),
+      notes: [extraction.notes, `Typed amount (${typedAmount}) doesn't match what was read off the bill (${extraction.amount}).`].filter(Boolean).join(' '),
+    };
+  }
+
+  const finalAmount = typedAmount || (extraction ? extraction.amount : 0);
+  const row = await db.addCfBill(req.params.accountId, {
+    personId,
+    amount: finalAmount,
+    counterparty: extraction?.vendor || null,
+    txnDate: txnDate || extraction?.date || null,
+    imageBuffer: req.file.buffer,
+    imageMime: req.file.mimetype,
+    extraction: finalExtraction,
+    submittedBy,
+    notes,
+  });
+  res.json({ ok: true, transaction: row, extraction: finalExtraction });
 }));
 
 // ---------- Real Estate CRM: WhatsApp integration ----------

@@ -73,6 +73,57 @@ const pool = new Pool({
   }
 })();
 
+// Self-healing: creates the Cash Flow Tracker module's tables on first boot
+// after this code deploys, so no separate manual migration step is needed
+// (same pattern as ensureWaConfigTable above). Ported from the standalone
+// cashflow-tracker app's db/schema.sql, adapted to be multi-tenant
+// (account_id on every row, text ids instead of SERIAL, uniqueness on
+// (account_id, name) instead of a globally-unique person name).
+(async function ensureCfTables() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS cf_people (
+        id          text PRIMARY KEY,
+        account_id  text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+        name        text NOT NULL,
+        active      boolean NOT NULL DEFAULT true,
+        created_at  timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_cf_people_account_name ON cf_people(account_id, name)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_cf_people_account ON cf_people(account_id)`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS cf_transactions (
+        id             text PRIMARY KEY,
+        account_id     text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+        person_id      text NOT NULL REFERENCES cf_people(id) ON DELETE CASCADE,
+        type           text NOT NULL CHECK (type IN ('received', 'bill', 'no_bill')),
+        amount         numeric NOT NULL,
+        txn_date       date NOT NULL DEFAULT CURRENT_DATE,
+        counterparty   text,
+        image_data     bytea,
+        image_mime     text,
+        extraction     jsonb,
+        confidence     numeric,
+        needs_review   boolean NOT NULL DEFAULT false,
+        reviewed_at    timestamptz,
+        reviewed_by    text,
+        submitted_by   text,
+        notes          text,
+        seen_by_admin  boolean NOT NULL DEFAULT false,
+        created_at     timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_cf_transactions_account ON cf_transactions(account_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_cf_transactions_person_date ON cf_transactions(person_id, txn_date)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_cf_transactions_needs_review ON cf_transactions(needs_review) WHERE needs_review = true`);
+  } catch (err) {
+    console.error('[db] failed to ensure cf_people/cf_transactions tables', err.message);
+  }
+})();
+
+const CF_CONFIDENCE_THRESHOLD = Number(process.env.CONFIDENCE_THRESHOLD || 0.75);
+
 function id(prefix) {
   return prefix + '_' + Math.random().toString(36).slice(2, 9);
 }
@@ -316,6 +367,14 @@ const MODULES = {
         }
       }
     }
+  },
+
+  // No generic "run an action" buttons for this module — the Cash Flow tab
+  // is its own dedicated UI (like real_estate), driven entirely by the
+  // /api/accounts/:id/cf/* routes rather than MODULES.actions.
+  cash_flow: {
+    kind: 'cash_flow',
+    actions: {}
   }
 };
 
@@ -1475,6 +1534,252 @@ async function completeTask(accountId, taskId, actorName) {
   return { ok: true };
 }
 
+// ---------- Cash Flow Tracker module ----------
+// Ported from the standalone cashflow-tracker app, adapted to be
+// multi-tenant: every function takes accountId and every query is scoped to
+// it, so multiple cash_flow accounts can share this database safely.
+async function getCfPeople(accountId) {
+  const { rows } = await pool.query(
+    'SELECT id, name FROM cf_people WHERE account_id=$1 AND active = true ORDER BY name ASC',
+    [accountId]
+  );
+  return rows;
+}
+
+async function addCfPerson(accountId, name) {
+  const clean = String(name || '').trim();
+  if (!clean) throw new Error('Name is required.');
+  const { rows } = await pool.query(
+    `INSERT INTO cf_people (id, account_id, name) VALUES ($1,$2,$3)
+     ON CONFLICT (account_id, name) DO UPDATE SET active = true
+     RETURNING id, name`,
+    [id('cfp'), accountId, clean]
+  );
+  return rows[0];
+}
+
+/** Logs cash handed to a person — admin-only action, not on the public submit link. */
+async function addCfReceived(accountId, { personId, amount, counterparty, txnDate, submittedBy, notes }) {
+  const { rows } = await pool.query(
+    `INSERT INTO cf_transactions (id, account_id, person_id, type, amount, txn_date, counterparty, submitted_by, notes)
+     VALUES ($1,$2,$3, 'received', $4, COALESCE($5::date, CURRENT_DATE), $6, $7, $8)
+     RETURNING *`,
+    [id('cft'), accountId, personId, amount, txnDate || null, counterparty || null, submittedBy || null, notes || null]
+  );
+  return rows[0];
+}
+
+/** Logs a no-bill payment — amount + who it went to, no photo. */
+async function addCfNoBill(accountId, { personId, amount, counterparty, txnDate, submittedBy, notes }) {
+  if (!counterparty || !String(counterparty).trim()) throw new Error('Who the payment went to is required for a no-bill entry.');
+  const { rows } = await pool.query(
+    `INSERT INTO cf_transactions (id, account_id, person_id, type, amount, txn_date, counterparty, submitted_by, notes)
+     VALUES ($1,$2,$3, 'no_bill', $4, COALESCE($5::date, CURRENT_DATE), $6, $7, $8)
+     RETURNING *`,
+    [id('cft'), accountId, personId, amount, txnDate || null, counterparty, submittedBy || null, notes || null]
+  );
+  return rows[0];
+}
+
+/** Logs a bill payment with its photo/PDF + Claude's extraction. */
+async function addCfBill(accountId, { personId, amount, counterparty, txnDate, imageBuffer, imageMime, extraction, submittedBy, notes }) {
+  const confidence = extraction && typeof extraction.confidence === 'number' ? extraction.confidence : null;
+  const needsReview = confidence === null || confidence < CF_CONFIDENCE_THRESHOLD;
+  const { rows } = await pool.query(
+    `INSERT INTO cf_transactions
+       (id, account_id, person_id, type, amount, txn_date, counterparty, image_data, image_mime, extraction, confidence, needs_review, submitted_by, notes)
+     VALUES ($1,$2,$3, 'bill', $4, COALESCE($5::date, CURRENT_DATE), $6, $7, $8, $9, $10, $11, $12, $13)
+     RETURNING id, person_id, type, amount, txn_date, counterparty, image_mime, extraction, confidence, needs_review, submitted_by, notes, created_at`,
+    [id('cft'), accountId, personId, amount, txnDate || null, counterparty || null, imageBuffer || null, imageMime || null,
+     extraction ? JSON.stringify(extraction) : null, confidence, needsReview, submittedBy || null, notes || null]
+  );
+  return rows[0];
+}
+
+/** Clears the "new" badge for a person — call when the admin opens their ledger. */
+async function markCfPersonSeen(accountId, personId) {
+  await pool.query(
+    'UPDATE cf_transactions SET seen_by_admin = true WHERE account_id=$1 AND person_id = $2 AND seen_by_admin = false',
+    [accountId, personId]
+  );
+}
+
+async function deleteCfTransaction(accountId, txnId) {
+  const { rowCount } = await pool.query('DELETE FROM cf_transactions WHERE id=$1 AND account_id=$2', [txnId, accountId]);
+  return rowCount > 0;
+}
+
+async function deleteCfTransactions(accountId, ids) {
+  if (!ids || !ids.length) return 0;
+  const { rowCount } = await pool.query(
+    'DELETE FROM cf_transactions WHERE account_id=$1 AND id = ANY($2::text[])',
+    [accountId, ids]
+  );
+  return rowCount;
+}
+
+async function getCfTransactionImage(accountId, txnId) {
+  const { rows } = await pool.query(
+    'SELECT image_data, image_mime FROM cf_transactions WHERE id=$1 AND account_id=$2',
+    [txnId, accountId]
+  );
+  return rows[0] || null;
+}
+
+async function confirmCfTransaction(accountId, txnId, { amount, counterparty, reviewedBy }) {
+  const { rows } = await pool.query(
+    `UPDATE cf_transactions
+       SET amount = COALESCE($3, amount),
+           counterparty = COALESCE($4, counterparty),
+           needs_review = false,
+           reviewed_at = now(),
+           reviewed_by = $5
+     WHERE id=$1 AND account_id=$2
+     RETURNING id`,
+    [txnId, accountId, amount ?? null, counterparty ?? null, reviewedBy || null]
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Transactions for the admin view, optionally filtered by person/date range.
+ * Excludes image bytes (fetched separately per-row) so the list stays fast.
+ */
+async function listCfTransactions(accountId, { personId, from, to } = {}) {
+  const conditions = ['t.account_id = $1'];
+  const params = [accountId];
+  if (personId) { params.push(personId); conditions.push(`t.person_id = $${params.length}`); }
+  if (from) { params.push(from); conditions.push(`t.txn_date >= $${params.length}`); }
+  if (to) { params.push(to); conditions.push(`t.txn_date <= $${params.length}`); }
+  const { rows } = await pool.query(
+    `SELECT t.id, t.person_id, p.name AS person_name, t.type, t.amount, t.txn_date, t.counterparty,
+            (t.image_data IS NOT NULL) AS has_image, t.image_mime, t.extraction, t.confidence,
+            t.needs_review, t.reviewed_at, t.reviewed_by, t.submitted_by, t.notes, t.created_at
+     FROM cf_transactions t
+     JOIN cf_people p ON p.id = t.person_id
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY t.txn_date DESC, t.created_at DESC`,
+    params
+  );
+  return rows;
+}
+
+/** Per-person running balance = total received − total (bill + no_bill), plus a not-yet-reviewed count (notification badge). */
+async function getCfPersonSummaries(accountId, { from, to } = {}) {
+  const conditions = ['t.account_id = p.account_id'];
+  const params = [accountId];
+  if (from) { params.push(from); conditions.push(`t.txn_date >= $${params.length}`); }
+  if (to) { params.push(to); conditions.push(`t.txn_date <= $${params.length}`); }
+  const { rows } = await pool.query(
+    `SELECT p.id, p.name,
+            COALESCE(SUM(CASE WHEN t.type='received' THEN t.amount ELSE 0 END), 0) AS total_received,
+            COALESCE(SUM(CASE WHEN t.type IN ('bill','no_bill') THEN t.amount ELSE 0 END), 0) AS total_spent,
+            COALESCE(SUM(CASE WHEN t.needs_review THEN 1 ELSE 0 END), 0) AS pending_review_count,
+            MAX(t.created_at) AS last_activity,
+            -- deliberately NOT date-filtered: "new" is a standing inbox
+            -- count, independent of whatever date range the admin has selected.
+            (SELECT COUNT(*) FROM cf_transactions t2 WHERE t2.person_id = p.id AND NOT t2.seen_by_admin) AS new_count
+     FROM cf_people p
+     LEFT JOIN cf_transactions t ON ${conditions.join(' AND ')}
+     WHERE p.account_id = $1 AND p.active = true
+     GROUP BY p.id, p.name
+     ORDER BY p.name ASC`,
+    params
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    totalReceived: Number(r.total_received),
+    totalSpent: Number(r.total_spent),
+    newCount: Number(r.new_count),
+    balance: Number(r.total_received) - Number(r.total_spent),
+    pendingReviewCount: Number(r.pending_review_count),
+    lastActivity: r.last_activity,
+  }));
+}
+
+const CF_WEEKDAY_NAMES = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+
+/**
+ * Reconstructs a person's ledger in the same shape as the client's original
+ * per-person Excel sheet: one row per calendar day, with a running
+ * "previous balance -> cash in hand -> expense -> balance" chain, plus
+ * split-out received-with-a-named-source vs plain received, and
+ * no-bill-paid amount/recipient. Defaults: `to` = today; `from` = the
+ * person's earliest transaction date (or today, if none yet).
+ */
+async function getCfPersonDailyLedger(accountId, personId, from, to) {
+  const boundsRes = await pool.query(
+    'SELECT MIN(txn_date) AS min_date FROM cf_transactions WHERE account_id=$1 AND person_id=$2',
+    [accountId, personId]
+  );
+  const minDate = boundsRes.rows[0].min_date;
+  const effectiveTo = to || new Date().toISOString().slice(0, 10);
+  const effectiveFrom = from || (minDate ? new Date(minDate).toISOString().slice(0, 10) : effectiveTo);
+
+  const openRes = await pool.query(
+    `SELECT
+       COALESCE(SUM(CASE WHEN type='received' THEN amount ELSE 0 END), 0) AS received,
+       COALESCE(SUM(CASE WHEN type IN ('bill','no_bill') THEN amount ELSE 0 END), 0) AS spent
+     FROM cf_transactions WHERE account_id=$1 AND person_id=$2 AND txn_date < $3`,
+    [accountId, personId, effectiveFrom]
+  );
+  const opening = Number(openRes.rows[0].received) - Number(openRes.rows[0].spent);
+
+  const { rows } = await pool.query(
+    `SELECT d::date AS day,
+       COALESCE(SUM(CASE WHEN t.type='received' AND (t.counterparty IS NULL OR t.counterparty = '') THEN t.amount ELSE 0 END), 0) AS received_amount,
+       COALESCE(SUM(CASE WHEN t.type='received' AND t.counterparty IS NOT NULL AND t.counterparty <> '' THEN t.amount ELSE 0 END), 0) AS others_received_amount,
+       STRING_AGG(DISTINCT CASE WHEN t.type='received' AND t.counterparty IS NOT NULL AND t.counterparty <> '' THEN t.counterparty END, ', ') AS others_received_name,
+       COALESCE(SUM(CASE WHEN t.type='bill' THEN t.amount ELSE 0 END), 0) AS bill_amount,
+       COALESCE(SUM(CASE WHEN t.type='no_bill' THEN t.amount ELSE 0 END), 0) AS no_bill_amount,
+       STRING_AGG(DISTINCT CASE WHEN t.type='no_bill' THEN t.counterparty END, ', ') AS no_bill_name,
+       COUNT(t.id) AS entry_count,
+       COALESCE(SUM(CASE WHEN t.needs_review THEN 1 ELSE 0 END), 0) AS needs_review_count,
+       ARRAY_AGG(t.id) FILTER (WHERE t.type = 'bill') AS bill_ids,
+       ARRAY_AGG(t.id) FILTER (WHERE t.needs_review) AS review_ids
+     FROM generate_series($3::date, $4::date, interval '1 day') d
+     LEFT JOIN cf_transactions t ON t.account_id = $1 AND t.person_id = $2 AND t.txn_date = d::date
+     GROUP BY d
+     ORDER BY d`,
+    [accountId, personId, effectiveFrom, effectiveTo]
+  );
+
+  let running = opening;
+  const days = rows.map((r) => {
+    const receivedAmount = Number(r.received_amount);
+    const othersReceivedAmount = Number(r.others_received_amount);
+    const billAmount = Number(r.bill_amount);
+    const noBillAmount = Number(r.no_bill_amount);
+    const previousBalance = running;
+    const totalCashInHand = previousBalance + receivedAmount + othersReceivedAmount;
+    const totalExpense = billAmount + noBillAmount;
+    const balance = totalCashInHand - totalExpense;
+    running = balance;
+    const dayDate = new Date(r.day);
+    return {
+      date: dayDate,
+      week: CF_WEEKDAY_NAMES[dayDate.getUTCDay()],
+      previousBalance,
+      receivedAmount,
+      othersReceivedAmount,
+      othersReceivedName: r.others_received_name || '',
+      billAmount,
+      noBillAmount,
+      noBillName: r.no_bill_name || '',
+      totalCashInHand,
+      totalExpense,
+      balance,
+      entryCount: Number(r.entry_count),
+      needsReviewCount: Number(r.needs_review_count),
+      billIds: r.bill_ids || [],
+      reviewIds: r.review_ids || [],
+    };
+  });
+
+  return { opening, from: effectiveFrom, to: effectiveTo, days };
+}
+
 // ---------- account provisioning (super admin only) ----------
 const MODULE_PRESETS = {
   sales: {
@@ -1486,6 +1791,10 @@ const MODULE_PRESETS = {
   real_estate: {
     label: 'Real Estate CRM',
     moduleKind: 'real_estate'
+  },
+  cash_flow: {
+    label: 'Cash Flow Tracker',
+    moduleKind: 'cash_flow'
   }
 };
 
@@ -1537,5 +1846,8 @@ module.exports = {
   addRESiteVisit, updateRESiteVisit,
   findOrCreateREWALead, addREWAMessage, updateREWAMessageStatus, getREWAConversation, clearREWAConversation, getRecentREWAThreads, applyREWAAgentUpdate, searchREInventory, getREInventoryImages, getREInventoryImagesByName,
   resolveWhatsAppAccountId, resolveAccountByPhoneNumberId, getEffectiveWhatsAppConfig, upsertREWhatsAppConfig, getREWhatsAppConfigForUI, getRELeadPhone,
+  getCfPeople, addCfPerson, addCfReceived, addCfNoBill, addCfBill, markCfPersonSeen,
+  deleteCfTransaction, deleteCfTransactions, getCfTransactionImage, confirmCfTransaction,
+  listCfTransactions, getCfPersonSummaries, getCfPersonDailyLedger,
   createAccount, MODULE_PRESETS, LICENSE_TERMS
 };

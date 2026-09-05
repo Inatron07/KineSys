@@ -68,10 +68,10 @@ const SEND_PHOTOS_TOOL = {
 const TOOLS = [UPDATE_LEAD_TOOL, SEARCH_PROPERTIES_TOOL, SEND_PHOTOS_TOOL];
 const MAX_TOOL_ROUNDS = 4;
 
-function buildSystemPrompt(lead) {
-  const agentName = process.env.AGENT_NAME || 'Zara';
-  const businessName = process.env.BUSINESS_NAME || 'the team';
-  const businessContext = process.env.BUSINESS_CONTEXT || '';
+function buildSystemPrompt(lead, waConfig) {
+  const agentName = waConfig?.agentName || 'Zara';
+  const businessName = waConfig?.businessName || 'the team';
+  const businessContext = waConfig?.businessContext || '';
 
   return `You are ${agentName}, a real-estate outreach assistant for ${businessName}, chatting with leads over WhatsApp.
 
@@ -131,7 +131,7 @@ current, using your best judgement on stage/notes, THEN write your WhatsApp repl
  * just a text reply) and returns a short string describing what happened,
  * fed back to Claude as the tool result so it can react in its next message.
  */
-async function sendPropertyPhotos(accountId, phone, projectName) {
+async function sendPropertyPhotos(accountId, phone, projectName, creds) {
   if (!phone) return 'This lead has no phone number on file — cannot send photos.';
   const listing = await db.getREInventoryImagesByName(accountId, projectName);
   if (!listing) return `No listing found matching "${projectName}".`;
@@ -139,7 +139,7 @@ async function sendPropertyPhotos(accountId, phone, projectName) {
   let sent = 0;
   for (const url of listing.images) {
     try {
-      await whatsapp.sendImageMessage(phone, url);
+      await whatsapp.sendImageMessage(phone, url, undefined, creds);
       sent++;
     } catch (err) {
       console.error('[whatsappAgent] failed to send property photo', url, err.response?.data || err.message);
@@ -153,12 +153,19 @@ async function sendPropertyPhotos(accountId, phone, projectName) {
  * inbound text, returns { replyText, stageUpdate } where stageUpdate is the
  * last { stage, notes } the model set, or null.
  */
-async function generateReply(accountId, lead, history, incomingText) {
+async function generateReply(accountId, lead, history, incomingText, waConfig) {
   const anthropic = anthropicClient();
   const messages = [
     ...history.map((h) => ({ role: h.direction === 'in' ? 'user' : 'assistant', content: h.message })),
     { role: 'user', content: incomingText },
   ];
+
+  // Credentials this account sends WhatsApp messages with (own number if
+  // configured, otherwise the legacy .env fallback) — threaded through to
+  // send_property_photos so photos go out from the right number.
+  const creds = waConfig?.phoneNumberId && waConfig?.accessToken
+    ? { phoneNumberId: waConfig.phoneNumberId, accessToken: waConfig.accessToken }
+    : undefined;
 
   let stageUpdate = null;
 
@@ -166,7 +173,7 @@ async function generateReply(accountId, lead, history, incomingText) {
     const response = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 600,
-      system: buildSystemPrompt(lead),
+      system: buildSystemPrompt(lead, waConfig),
       tools: TOOLS,
       messages,
     });
@@ -191,7 +198,7 @@ async function generateReply(accountId, lead, history, incomingText) {
           content: matches.length ? JSON.stringify(matches) : 'No matching available properties found.',
         });
       } else if (call.name === 'send_property_photos') {
-        const result = await sendPropertyPhotos(accountId, lead.phone, call.input.project_name);
+        const result = await sendPropertyPhotos(accountId, lead.phone, call.input.project_name, creds);
         toolResults.push({ type: 'tool_result', tool_use_id: call.id, content: result });
       } else {
         toolResults.push({ type: 'tool_result', tool_use_id: call.id, content: 'Unknown tool.', is_error: true });
@@ -203,7 +210,7 @@ async function generateReply(accountId, lead, history, incomingText) {
   }
 
   const followup = await anthropic.messages.create({
-    model: MODEL, max_tokens: 600, system: buildSystemPrompt(lead), messages,
+    model: MODEL, max_tokens: 600, system: buildSystemPrompt(lead, waConfig), messages,
   });
   const replyText = followup.content.filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
   return { replyText, stageUpdate };

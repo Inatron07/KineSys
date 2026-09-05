@@ -32,6 +32,7 @@
       <button id="sideToggle">⟨⟨</button>
     </div>
     <div class="side-nav-item active" data-view="home"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"></path><path d="M5 10v10h14V10"></path></svg></span><span class="label">Home</span></div>
+    <div class="side-nav-item" data-view="cashflow" data-cashflow="1"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></span><span class="label">Cash Flow</span></div>
     <div class="side-nav-item" data-view="dashboard" data-realestate="1"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="12"></line><line x1="12" y1="20" x2="12" y2="6"></line><line x1="18" y1="20" x2="18" y2="14"></line></svg></span><span class="label">Dashboard</span></div>
     <div class="side-nav-item" data-view="releads" data-realestate="1"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"></circle></svg></span><span class="label">Leads</span></div>
     <div class="side-nav-item" data-view="sitevisits" data-realestate="1"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line><path d="m9 16 2 2 4-4"></path></svg></span><span class="label">Site Visits</span></div>
@@ -114,6 +115,70 @@
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div class="view-section" id="viewCashflow">
+        <div class="panel">
+          <div class="panel-head" style="flex-wrap:wrap;gap:10px;">
+            <div>
+              <h3>Cash Flow Tracker</h3>
+              <span class="sub">Employee cash received / spent, reconstructed day by day</span>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+              <div class="cf-linkbox">Submit link: <code id="cfSubmitLink"></code><button class="tt-reset" type="button" id="cfCopyLinkBtn" style="margin-left:4px;">Copy</button></div>
+              <button class="btn btn-secondary" id="cfExportBtn" type="button" style="padding:8px 14px;font-size:11.5px;">&#8595; Export Excel</button>
+              <button class="btn btn-primary" id="cfLogReceivedBtn" type="button" style="padding:8px 14px;font-size:11.5px;width:auto;">+ Log cash received</button>
+            </div>
+          </div>
+
+          <div class="cf-filters" style="margin:14px 18px 0;">
+            <div><label>From</label><input type="date" id="cfFromDate"></div>
+            <div><label>To</label><input type="date" id="cfToDate"></div>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-secondary" type="button" data-cf-preset="today" style="padding:6px 10px;font-size:11.5px;">Today</button>
+              <button class="btn btn-secondary" type="button" data-cf-preset="month" style="padding:6px 10px;font-size:11.5px;">This month</button>
+              <button class="btn btn-secondary" type="button" data-cf-preset="year" style="padding:6px 10px;font-size:11.5px;">This year</button>
+              <button class="btn btn-secondary" type="button" data-cf-preset="all" style="padding:6px 10px;font-size:11.5px;">All time</button>
+            </div>
+          </div>
+
+          <div class="cf-people-row" id="cfPeopleRow" style="margin:14px 18px 0;"></div>
+          <div class="cf-summary-cards" id="cfSummaryCards" style="margin:0 18px 4px;"></div>
+
+          <div id="cfLedgerWrap" style="display:none;">
+            <div class="cf-section-label" style="margin:20px 18px 8px;">
+              <span>Ledger &amp; transactions — same columns as the Excel export, latest first</span>
+              <button type="button" class="cf-cal-btn" id="cfCalOpenBtn">&#128197; Calendar</button>
+            </div>
+            <div id="cfSelectionBar" style="margin:0 18px;"></div>
+            <div class="cf-scroll-x" style="margin:0 18px 18px;">
+              <table id="cfLedgerTable">
+                <thead>
+                  <tr>
+                    <th rowspan="2" class="tt-check-col" id="cfLedgerHeaderCheck"></th>
+                    <th rowspan="2">Date</th>
+                    <th rowspan="2">PREVIOUS BALANCE</th>
+                    <th rowspan="2">Received Amount (AED)</th>
+                    <th rowspan="2">Altaf</th>
+                    <th colspan="2">OTHERS (RECEVED)</th>
+                    <th colspan="2">NO BILL (PAID)</th>
+                    <th rowspan="2">BILL AMOUNT</th>
+                    <th rowspan="2">Total cashin hand</th>
+                    <th rowspan="2">Total expense</th>
+                    <th rowspan="2">BALANCE</th>
+                    <th rowspan="2">Flag</th>
+                    <th rowspan="2">Invoice</th>
+                    <th rowspan="2">Validation</th>
+                    <th rowspan="2"></th>
+                  </tr>
+                  <tr><th>AMOUNT</th><th>NAME</th><th>BILL AMOUNT</th><th>NAME</th></tr>
+                </thead>
+                <tbody id="cfLedgerBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div id="cfNoPersonNote" class="cf-empty" style="margin:0 18px 18px;">Select an employee above to view their ledger.</div>
         </div>
       </div>
 
@@ -897,6 +962,76 @@
       </div>
       <div class="na-field" style="margin-bottom:18px;"><label for="reVisitNotes">Notes</label><input type="text" id="reVisitNotes" placeholder="e.g. Client wants to see 2 more units in the same building"></div>
       <button class="btn btn-primary" id="reVisitSave" type="button" style="width:100%;padding:12px;font-size:13px;">Save visit</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="cfReviewModal">
+  <div class="modal cf-modal">
+    <div class="modal-head">
+      <h3>Review bill</h3>
+      <button class="modal-close" id="cfReviewClose" type="button">✕</button>
+    </div>
+    <div class="modal-body">
+      <img id="cfReviewImg" alt="bill">
+      <div id="cfReviewNotes" style="font-size:12px;color:var(--warn);margin-bottom:8px;"></div>
+      <div class="na-field" style="margin-bottom:14px;"><label for="cfReviewAmount">Amount</label><input type="number" id="cfReviewAmount" step="0.01"></div>
+      <div class="na-field" style="margin-bottom:18px;"><label for="cfReviewCounterparty">Vendor / counterparty</label><input type="text" id="cfReviewCounterparty"></div>
+      <button class="btn btn-primary" id="cfReviewConfirm" type="button" style="width:100%;padding:12px;font-size:13px;">Confirm correct</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="cfReceivedModal">
+  <div class="modal cf-modal">
+    <div class="modal-head">
+      <h3>Log cash received</h3>
+      <button class="modal-close" id="cfReceivedClose" type="button">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="na-field" style="margin-bottom:14px;"><label for="cfRecvPerson">Person</label><select id="cfRecvPerson"></select></div>
+      <div class="na-field" style="margin-bottom:14px;"><label for="cfRecvAmount">Amount</label><input type="number" id="cfRecvAmount" step="0.01"></div>
+      <div class="na-field" style="margin-bottom:14px;"><label for="cfRecvSource">From / source (optional)</label><input type="text" id="cfRecvSource" placeholder="e.g. ATM, DIB, Owner"></div>
+      <div class="na-field" style="margin-bottom:18px;"><label for="cfRecvDate">Date</label><input type="date" id="cfRecvDate"></div>
+      <button class="btn btn-primary" id="cfRecvSave" type="button" style="width:100%;padding:12px;font-size:13px;">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="cfDayModal">
+  <div class="modal cf-modal">
+    <div class="modal-head">
+      <h3 id="cfDayModalTitle">Day detail</h3>
+      <button class="modal-close" id="cfDayModalClose" type="button">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="cfDayModalRows"></div>
+      <div id="cfDayModalEntries" style="margin-top:12px;"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="cfCalendarModal">
+  <div class="modal cf-modal" style="max-width:760px;">
+    <div class="modal-head">
+      <h3 id="cfCalTitle">Calendar</h3>
+      <button class="modal-close" id="cfCalClose" type="button">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="cf-cal-head">
+        <span></span>
+        <div class="nav">
+          <button type="button" id="cfCalPrev">‹</button>
+          <span id="cfCalMonthLabel" style="align-self:center;font-size:13px;color:var(--muted);min-width:120px;text-align:center;"></span>
+          <button type="button" id="cfCalNext">›</button>
+        </div>
+      </div>
+      <div class="cf-cal-grid" id="cfCalDow">
+        <div class="cf-cal-dow">Sun</div><div class="cf-cal-dow">Mon</div><div class="cf-cal-dow">Tue</div>
+        <div class="cf-cal-dow">Wed</div><div class="cf-cal-dow">Thu</div><div class="cf-cal-dow">Fri</div><div class="cf-cal-dow">Sat</div>
+      </div>
+      <div class="cf-cal-grid" id="cfCalGrid"></div>
+      <div class="cf-cal-detail" id="cfCalDetail"></div>
     </div>
   </div>
 </div>

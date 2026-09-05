@@ -2294,21 +2294,29 @@
     var isSuperAdminViewer = data.viewerRole === 'super_admin';
     var viewerIsPrimary = !!data.viewerIsPrimary;
     var isRealEstate = data.moduleKind === 'real_estate';
+    var isCashFlow = data.moduleKind === 'cash_flow';
 
-    // Real Estate CRM gets a light theme; everything else (Sales, the
-    // topbar, modals, buttons) stays exactly as-is — re-light only
-    // overrides CSS variables, it doesn't change any component.
-    document.body.classList.toggle('re-light', isRealEstate);
+    // Real Estate CRM and Cash Flow Tracker both get the light theme;
+    // everything else (Sales, the topbar, modals, buttons) stays exactly
+    // as-is — re-light only overrides CSS variables, it doesn't change
+    // any component.
+    document.body.classList.toggle('re-light', isRealEstate || isCashFlow);
     var topbarLogo = document.getElementById('topbarLogo');
-    if (topbarLogo) topbarLogo.src = isRealEstate ? 'logo-light.svg' : 'logo.svg';
+    if (topbarLogo) topbarLogo.src = (isRealEstate || isCashFlow) ? 'logo-light.svg' : 'logo.svg';
 
     // Which sidebar tabs apply depends on the account's module — Home/
     // Leads-Kanban is Sales-only, Dashboard/Leads/Brokers/Inventory/
-    // Accounting is Real Estate-only. Team is shared by every module.
-    document.querySelectorAll('.side-nav-item[data-view="home"]').forEach(function (el) { el.style.display = isRealEstate ? 'none' : ''; });
+    // Accounting is Real Estate-only, Cash Flow is its own single tab.
+    // Team is shared by every module.
+    document.querySelectorAll('.side-nav-item[data-view="home"]').forEach(function (el) { el.style.display = (isRealEstate || isCashFlow) ? 'none' : ''; });
     document.querySelectorAll('.side-nav-item[data-realestate]').forEach(function (el) { el.style.display = isRealEstate ? '' : 'none'; });
+    document.querySelectorAll('.side-nav-item[data-cashflow]').forEach(function (el) { el.style.display = isCashFlow ? '' : 'none'; });
     if (isRealEstate && !initialViewSet) {
       switchView('dashboard');
+      initialViewSet = true;
+    }
+    if (isCashFlow && !initialViewSet) {
+      switchView('cashflow');
       initialViewSet = true;
     }
 
@@ -2316,6 +2324,8 @@
 
     if (isRealEstate) {
       renderRealEstate(data);
+    } else if (isCashFlow) {
+      renderCashFlowShell(data);
     } else {
       var expired = data.expiresAt && data.expiresAt < Date.now();
       document.getElementById('licenseBar').innerHTML =
@@ -2468,6 +2478,7 @@
     updateInaFloatVisibility(view === 'dashboard');
     if (view === 'reports') loadMonthlyReport();
     if (view === 'whatsapp') loadWhatsAppTab();
+    if (view === 'cashflow') loadCashFlowTab();
   }
 
   document.querySelectorAll('.side-nav-item').forEach(function (item) {
@@ -2490,4 +2501,461 @@
   document.getElementById('reInaFloatClose').addEventListener('click', function () {
     document.getElementById('reInaFloatWindow').style.display = 'none';
   });
+
+  // ==================== Cash Flow Tracker module ====================
+  // Ported from the standalone cashflow-tracker app's admin.html, adapted
+  // to this app's account-scoped /api/accounts/:id/cf/* routes and to the
+  // shared tt-checkbox selection system (name "cfLedger", one "row" per
+  // calendar day rather than per database row).
+  var cfState = { people: [], selectedPersonId: null, ledgerDays: [], reviewingId: null, reviewSource: [], initialized: false };
+  var cfCal = { personId: null, personName: '', year: 0, month: 0, days: [], selectedDate: null };
+  var CF_MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  function cfBase() { return '/api/accounts/' + accountId + '/cf'; }
+  function cfMoney(n) { return Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function cfMoneyOrBlank(n) { return n ? cfMoney(n) : ''; }
+  function cfIsoDateOf(d) { return new Date(d).toISOString().slice(0, 10); }
+  function cfIsoDate(y, m, day) { return y + '-' + String(m + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0'); }
+
+  ttVisibleIds.cfLedger = function () {
+    return cfState.ledgerDays.filter(function (d) { return d.entryCount > 0; }).map(function (d) { return cfIsoDateOf(d.date); });
+  };
+  ttRenderFns.cfLedger = function () { cfRenderLedger(); };
+
+  function renderCashFlowShell(data) {
+    var link = window.location.origin + '/cf-submit.html?account=' + accountId;
+    var linkEl = document.getElementById('cfSubmitLink');
+    if (linkEl) linkEl.textContent = link;
+  }
+
+  document.getElementById('cfCopyLinkBtn').addEventListener('click', function () {
+    var link = window.location.origin + '/cf-submit.html?account=' + accountId;
+    navigator.clipboard.writeText(link).then(function () {
+      var btn = document.getElementById('cfCopyLinkBtn');
+      btn.textContent = 'Copied!';
+      setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+    });
+  });
+
+  function cfQs() {
+    var parts = [];
+    var from = document.getElementById('cfFromDate').value;
+    var to = document.getElementById('cfToDate').value;
+    if (from) parts.push('from=' + from);
+    if (to) parts.push('to=' + to);
+    return parts.length ? '?' + parts.join('&') : '';
+  }
+
+  function cfApplyPreset(preset) {
+    var now = new Date();
+    var from = null, to = null;
+    if (preset === 'today') { from = to = now.toISOString().slice(0, 10); }
+    else if (preset === 'month') { from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10); to = now.toISOString().slice(0, 10); }
+    else if (preset === 'year') { from = new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10); to = now.toISOString().slice(0, 10); }
+    else { from = ''; to = ''; }
+    document.getElementById('cfFromDate').value = from || '';
+    document.getElementById('cfToDate').value = to || '';
+    document.querySelectorAll('[data-cf-preset]').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-cf-preset') === preset); });
+    cfReload();
+  }
+  document.querySelectorAll('[data-cf-preset]').forEach(function (b) {
+    b.addEventListener('click', function () { cfApplyPreset(b.getAttribute('data-cf-preset')); });
+  });
+  document.getElementById('cfFromDate').addEventListener('change', function () {
+    document.querySelectorAll('[data-cf-preset]').forEach(function (b) { b.classList.remove('active'); });
+    cfReload();
+  });
+  document.getElementById('cfToDate').addEventListener('change', function () {
+    document.querySelectorAll('[data-cf-preset]').forEach(function (b) { b.classList.remove('active'); });
+    cfReload();
+  });
+
+  function cfLoadPeople() {
+    return fetch(cfBase() + '/people').then(function (r) { return r.json(); }).then(function (people) {
+      cfState.people = people;
+      var sel = document.getElementById('cfRecvPerson');
+      sel.innerHTML = people.map(function (p) { return '<option value="' + p.id + '">' + p.name + '</option>'; }).join('');
+    });
+  }
+
+  function cfReload() {
+    var range = cfQs();
+    ttState('cfLedger').selected.clear();
+    var calls = [fetch(cfBase() + '/summaries' + range).then(function (r) { return r.json(); })];
+    if (cfState.selectedPersonId) {
+      calls.push(fetch(cfBase() + '/ledger?personId=' + cfState.selectedPersonId + (range ? '&' + range.slice(1) : '')).then(function (r) { return r.json(); }));
+    }
+    Promise.all(calls).then(function (results) {
+      cfRenderPeople(results[0]);
+      cfRenderSummaryCards(results[0]);
+
+      var hasPerson = !!cfState.selectedPersonId;
+      document.getElementById('cfLedgerWrap').style.display = hasPerson ? '' : 'none';
+      document.getElementById('cfNoPersonNote').style.display = hasPerson ? 'none' : '';
+      if (hasPerson) {
+        cfState.ledgerDays = (results[1] && results[1].days) || [];
+        cfRenderLedger();
+      }
+    });
+  }
+
+  function cfRenderPeople(summaries) {
+    var row = document.getElementById('cfPeopleRow');
+    var allCard = '<div class="cf-person-card' + (!cfState.selectedPersonId ? ' active' : '') + '">' +
+      '<button type="button" class="cf-person-btn" data-cf-person=""><span class="pname">All</span><span class="pbal">' + summaries.length + ' people</span></button></div>';
+    row.innerHTML = allCard + summaries.map(function (s) {
+      var reviewBadge = s.pendingReviewCount > 0 ? '<span class="badge">' + s.pendingReviewCount + '</span>' : '';
+      var newBadge = s.newCount > 0 ? '<span class="badge new">' + s.newCount + '</span>' : '';
+      var hasNewClass = s.newCount > 0 ? ' has-new' : '';
+      return '<div class="cf-person-card' + (String(s.id) === String(cfState.selectedPersonId) ? ' active' : hasNewClass) + '">' +
+        reviewBadge + newBadge +
+        '<button type="button" class="cf-person-btn" data-cf-person="' + s.id + '"><span class="pname">' + s.name + '</span><span class="pbal">Bal: ' + cfMoney(s.balance) + '</span></button>' +
+        '</div>';
+    }).join('');
+    row.querySelectorAll('[data-cf-person]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-cf-person') || null;
+        cfState.selectedPersonId = id;
+        if (id) {
+          fetch(cfBase() + '/people/' + id + '/mark-seen', { method: 'POST' }).then(cfReload).catch(cfReload);
+        } else {
+          cfReload();
+        }
+      });
+    });
+  }
+
+  function cfRenderSummaryCards(summaries) {
+    var totalReceived = summaries.reduce(function (s, p) { return s + p.totalReceived; }, 0);
+    var totalSpent = summaries.reduce(function (s, p) { return s + p.totalSpent; }, 0);
+    var pending = summaries.reduce(function (s, p) { return s + p.pendingReviewCount; }, 0);
+    var selected = cfState.selectedPersonId ? summaries.filter(function (p) { return String(p.id) === String(cfState.selectedPersonId); })[0] : null;
+    var cards = selected
+      ? [
+          { label: selected.name + ' — received', val: cfMoney(selected.totalReceived) },
+          { label: selected.name + ' — spent', val: cfMoney(selected.totalSpent) },
+          { label: selected.name + ' — balance', val: cfMoney(selected.balance) },
+          { label: 'Needs review', val: selected.pendingReviewCount },
+        ]
+      : [
+          { label: 'Total received', val: cfMoney(totalReceived) },
+          { label: 'Total spent', val: cfMoney(totalSpent) },
+          { label: 'Net balance', val: cfMoney(totalReceived - totalSpent) },
+          { label: 'Needs review', val: pending },
+        ];
+    document.getElementById('cfSummaryCards').innerHTML = cards.map(function (c) {
+      return '<div class="cf-scard"><div class="label">' + c.label + '</div><div class="val">' + c.val + '</div></div>';
+    }).join('');
+  }
+
+  function cfRenderSelectionBar() {
+    var n = ttState('cfLedger').selected.size;
+    var bar = document.getElementById('cfSelectionBar');
+    if (!n) { bar.innerHTML = ''; return; }
+    bar.innerHTML = '<div class="tt-selection-bar show"><span>' + n + ' day' + (n === 1 ? '' : 's') + ' selected</span>' +
+      '<div style="display:flex;gap:10px;"><button class="tt-reset" type="button" id="cfDeleteSelectedBtn" style="color:var(--warn);">Delete selected</button>' +
+      '<button class="tt-reset" type="button" id="cfClearSelectionBtn">Clear</button></div></div>';
+    document.getElementById('cfClearSelectionBtn').addEventListener('click', function () {
+      ttState('cfLedger').selected.clear();
+      cfRenderLedger();
+    });
+    document.getElementById('cfDeleteSelectedBtn').addEventListener('click', cfDeleteSelectedDays);
+  }
+
+  function cfDeleteSelectedDays() {
+    var dates = Array.from(ttState('cfLedger').selected);
+    if (!dates.length) return;
+    if (!window.confirm('Delete every transaction on ' + dates.length + ' selected day' + (dates.length === 1 ? '' : 's') + '? This cannot be undone.')) return;
+    Promise.all(dates.map(function (d) {
+      return fetch(cfBase() + '/transactions?personId=' + cfState.selectedPersonId + '&from=' + d + '&to=' + d).then(function (r) { return r.json(); });
+    })).then(function (lists) {
+      var ids = [];
+      lists.forEach(function (list) { list.forEach(function (t) { ids.push(t.id); }); });
+      if (!ids.length) { ttState('cfLedger').selected.clear(); cfReload(); return; }
+      return fetch(cfBase() + '/transactions/bulk-delete', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: ids })
+      }).then(function () { ttState('cfLedger').selected.clear(); cfReload(); });
+    });
+  }
+
+  function cfRenderLedger() {
+    var body = document.getElementById('cfLedgerBody');
+    document.getElementById('cfLedgerHeaderCheck').innerHTML = ttHeaderCheckboxHTML('cfLedger');
+    if (!cfState.ledgerDays.length) { body.innerHTML = '<tr><td colspan="17" class="cf-empty">No data in this range.</td></tr>'; cfRenderSelectionBar(); return; }
+    var ordered = cfState.ledgerDays.slice().reverse(); // latest first
+    body.innerHTML = ordered.map(function (d) {
+      var dateStr = cfIsoDateOf(d.date);
+      var hasEntries = d.entryCount > 0;
+      var checkbox = hasEntries ? ttRowCheckboxHTML('cfLedger', dateStr) : '';
+      var flag = d.needsReviewCount > 0 ? '<span class="cf-flag">&#9888; Check total</span>' : '';
+      var viewBtn = hasEntries ? '<button type="button" data-cf-view-day="' + dateStr + '">View</button>' : '';
+      var invoiceLinks = (d.billIds || []).map(function (id, i) {
+        return '<a href="' + cfBase() + '/transactions/' + id + '/image" target="_blank" rel="noopener">&#128206;' + (d.billIds.length > 1 ? (i + 1) : '') + '</a>';
+      }).join('') || '—';
+      var validateBtn = (d.reviewIds || []).length
+        ? '<button type="button" data-cf-validate-day="' + dateStr + '" data-cf-validate-id="' + d.reviewIds[0] + '">&#10003; Validate' + (d.reviewIds.length > 1 ? ' (' + d.reviewIds.length + ')' : '') + '</button>'
+        : '—';
+      return '<tr class="' + (d.needsReviewCount > 0 ? 'cf-needs-review' : '') + '">' +
+        '<td class="tt-check-col">' + checkbox + '</td>' +
+        '<td>' + fmtDate(new Date(d.date).getTime()) + '</td>' +
+        '<td>' + cfMoneyOrBlank(d.previousBalance) + '</td>' +
+        '<td>' + cfMoneyOrBlank(d.receivedAmount) + '</td>' +
+        '<td></td>' +
+        '<td>' + cfMoneyOrBlank(d.othersReceivedAmount) + '</td>' +
+        '<td>' + (d.othersReceivedName || '') + '</td>' +
+        '<td>' + cfMoneyOrBlank(d.noBillAmount) + '</td>' +
+        '<td>' + (d.noBillName || '') + '</td>' +
+        '<td>' + cfMoneyOrBlank(d.billAmount) + '</td>' +
+        '<td>' + cfMoneyOrBlank(d.totalCashInHand) + '</td>' +
+        '<td>' + cfMoneyOrBlank(d.totalExpense) + '</td>' +
+        '<td>' + cfMoneyOrBlank(d.balance) + '</td>' +
+        '<td>' + flag + '</td>' +
+        '<td class="cf-row-actions">' + invoiceLinks + '</td>' +
+        '<td class="cf-row-actions">' + validateBtn + '</td>' +
+        '<td class="cf-row-actions">' + viewBtn + '</td>' +
+        '</tr>';
+    }).join('');
+
+    body.querySelectorAll('[data-cf-view-day]').forEach(function (btn) {
+      btn.addEventListener('click', function () { cfOpenDayDetail(btn.getAttribute('data-cf-view-day')); });
+    });
+    body.querySelectorAll('[data-cf-validate-day]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        cfOpenReviewForDate(btn.getAttribute('data-cf-validate-day'), btn.getAttribute('data-cf-validate-id'));
+      });
+    });
+    ttApplyIndeterminate();
+    cfRenderSelectionBar();
+  }
+
+  function cfOpenReviewForDate(dateStr, id) {
+    fetch(cfBase() + '/transactions?personId=' + cfState.selectedPersonId + '&from=' + dateStr + '&to=' + dateStr)
+      .then(function (r) { return r.json(); })
+      .then(function (txns) {
+        cfState.reviewSource = txns;
+        cfOpenReview(id);
+      });
+  }
+
+  // ---- day detail modal ----
+  function cfOpenDayDetail(dateStr) {
+    var d = cfState.ledgerDays.filter(function (x) { return cfIsoDateOf(x.date) === dateStr; })[0];
+    if (!d) return;
+    document.getElementById('cfDayModalTitle').textContent = new Date(dateStr + 'T00:00:00').toDateString();
+    var rows = [
+      ['Previous balance', cfMoney(d.previousBalance)],
+      ['Received amount', d.receivedAmount ? cfMoney(d.receivedAmount) : '—'],
+      ['Others received', d.othersReceivedAmount ? cfMoney(d.othersReceivedAmount) + (d.othersReceivedName ? ' (' + d.othersReceivedName + ')' : '') : '—'],
+      ['No-bill paid', d.noBillAmount ? cfMoney(d.noBillAmount) + (d.noBillName ? ' — ' + d.noBillName : '') : '—'],
+      ['Bill amount', d.billAmount ? cfMoney(d.billAmount) : '—'],
+      ['Total cash in hand', cfMoney(d.totalCashInHand)],
+      ['Total expense', cfMoney(d.totalExpense)],
+      ['Balance', cfMoney(d.balance)],
+    ];
+    document.getElementById('cfDayModalRows').innerHTML = rows.map(function (r) { return '<div class="cf-modal-row"><span>' + r[0] + '</span><span>' + r[1] + '</span></div>'; }).join('');
+    document.getElementById('cfDayModalEntries').innerHTML = '<div class="cf-empty">Loading entries…</div>';
+    document.getElementById('cfDayModal').classList.add('show');
+
+    fetch(cfBase() + '/transactions?personId=' + cfState.selectedPersonId + '&from=' + dateStr + '&to=' + dateStr)
+      .then(function (r) { return r.json(); })
+      .then(function (txns) {
+        cfState.reviewSource = txns;
+        if (!txns.length) { document.getElementById('cfDayModalEntries').innerHTML = ''; return; }
+        document.getElementById('cfDayModalEntries').innerHTML = '<div style="font-size:11px;color:var(--faint);text-transform:uppercase;margin:4px 0;">Entries this day</div>' +
+          txns.map(function (t) {
+            var label = (t.type === 'received' ? 'Received' : t.type === 'bill' ? 'Bill' : 'No bill') + (t.counterparty ? ' — ' + t.counterparty : '');
+            var flag = t.needs_review ? ' <span class="cf-flag">&#9888;</span>' : '';
+            var viewBtn = t.type === 'bill' ? '<button type="button" data-cf-entry-view="' + t.id + '" style="margin-left:6px;">View</button>' : '';
+            return '<div class="cf-entry-row"><span>' + label + flag + '</span><span>' + cfMoney(t.amount) + viewBtn +
+              ' <button type="button" data-cf-entry-delete="' + t.id + '" style="margin-left:6px;color:var(--warn);">Delete</button></span></div>';
+          }).join('');
+        document.getElementById('cfDayModalEntries').querySelectorAll('[data-cf-entry-view]').forEach(function (btn) {
+          btn.addEventListener('click', function () { cfOpenReview(btn.getAttribute('data-cf-entry-view')); });
+        });
+        document.getElementById('cfDayModalEntries').querySelectorAll('[data-cf-entry-delete]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            if (!window.confirm('Delete this entry?')) return;
+            fetch(cfBase() + '/transactions/' + btn.getAttribute('data-cf-entry-delete'), { method: 'DELETE' })
+              .then(function () { document.getElementById('cfDayModal').classList.remove('show'); cfReload(); });
+          });
+        });
+      });
+  }
+  document.getElementById('cfDayModalClose').addEventListener('click', function () { document.getElementById('cfDayModal').classList.remove('show'); });
+
+  // ---- review modal (bill photo confirm/correct) ----
+  function cfOpenReview(id) {
+    var t = cfState.reviewSource.filter(function (x) { return String(x.id) === String(id); })[0];
+    if (!t) return;
+    cfState.reviewingId = id;
+    document.getElementById('cfReviewImg').src = cfBase() + '/transactions/' + id + '/image';
+    document.getElementById('cfReviewAmount').value = t.amount;
+    document.getElementById('cfReviewCounterparty').value = t.counterparty || '';
+    var extraction = t.extraction || {};
+    var notesBits = [];
+    if (typeof t.confidence === 'number') notesBits.push('Claude confidence: ' + Math.round(t.confidence * 100) + '%');
+    if (extraction.notes) notesBits.push(extraction.notes);
+    document.getElementById('cfReviewNotes').textContent = notesBits.join(' — ');
+    document.getElementById('cfReviewModal').classList.add('show');
+  }
+  document.getElementById('cfReviewClose').addEventListener('click', function () { document.getElementById('cfReviewModal').classList.remove('show'); });
+  document.getElementById('cfReviewConfirm').addEventListener('click', function () {
+    fetch(cfBase() + '/transactions/' + cfState.reviewingId + '/confirm', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: document.getElementById('cfReviewAmount').value, counterparty: document.getElementById('cfReviewCounterparty').value })
+    }).then(function () {
+      document.getElementById('cfReviewModal').classList.remove('show');
+      document.getElementById('cfDayModal').classList.remove('show');
+      cfReload();
+    });
+  });
+
+  // ---- log received modal ----
+  document.getElementById('cfLogReceivedBtn').addEventListener('click', function () {
+    if (cfState.selectedPersonId) document.getElementById('cfRecvPerson').value = cfState.selectedPersonId;
+    document.getElementById('cfRecvDate').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('cfReceivedModal').classList.add('show');
+  });
+  document.getElementById('cfReceivedClose').addEventListener('click', function () { document.getElementById('cfReceivedModal').classList.remove('show'); });
+  document.getElementById('cfRecvSave').addEventListener('click', function () {
+    var amount = document.getElementById('cfRecvAmount').value;
+    if (!amount || Number(amount) <= 0) { showToast('Enter an amount.'); return; }
+    fetch(cfBase() + '/received', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        personId: document.getElementById('cfRecvPerson').value, amount: amount,
+        counterparty: document.getElementById('cfRecvSource').value, txnDate: document.getElementById('cfRecvDate').value
+      })
+    }).then(function (r) { return r.json(); }).then(function () {
+      document.getElementById('cfReceivedModal').classList.remove('show');
+      document.getElementById('cfRecvAmount').value = '';
+      document.getElementById('cfRecvSource').value = '';
+      cfReload();
+    });
+  });
+
+  // ---- export ----
+  document.getElementById('cfExportBtn').addEventListener('click', function () {
+    window.location = cfBase() + '/export.xlsx' + cfQs();
+  });
+
+  // ---- calendar button above the table ----
+  document.getElementById('cfCalOpenBtn').addEventListener('click', function () {
+    if (!cfState.selectedPersonId) return;
+    var person = cfState.people.filter(function (p) { return String(p.id) === String(cfState.selectedPersonId); })[0];
+    cfOpenCalendar(cfState.selectedPersonId, person ? person.name : '');
+  });
+
+  function cfOpenCalendar(personId, personName) {
+    var now = new Date();
+    cfCal.personId = personId;
+    cfCal.personName = personName;
+    cfCal.year = now.getFullYear();
+    cfCal.month = now.getMonth();
+    cfCal.selectedDate = null;
+    document.getElementById('cfCalTitle').textContent = personName + ' — Calendar';
+    document.getElementById('cfCalendarModal').classList.add('show');
+    cfLoadCalendarMonth();
+  }
+  document.getElementById('cfCalClose').addEventListener('click', function () { document.getElementById('cfCalendarModal').classList.remove('show'); });
+  document.getElementById('cfCalPrev').addEventListener('click', function () {
+    cfCal.month -= 1;
+    if (cfCal.month < 0) { cfCal.month = 11; cfCal.year -= 1; }
+    cfLoadCalendarMonth();
+  });
+  document.getElementById('cfCalNext').addEventListener('click', function () {
+    cfCal.month += 1;
+    if (cfCal.month > 11) { cfCal.month = 0; cfCal.year += 1; }
+    cfLoadCalendarMonth();
+  });
+
+  function cfLoadCalendarMonth() {
+    document.getElementById('cfCalMonthLabel').textContent = CF_MONTH_NAMES[cfCal.month] + ' ' + cfCal.year;
+    var firstDay = cfIsoDate(cfCal.year, cfCal.month, 1);
+    var lastDayNum = new Date(cfCal.year, cfCal.month + 1, 0).getDate();
+    var lastDay = cfIsoDate(cfCal.year, cfCal.month, lastDayNum);
+    document.getElementById('cfCalGrid').innerHTML = '<div class="cf-empty" style="grid-column:1/-1;">Loading…</div>';
+    document.getElementById('cfCalDetail').innerHTML = '';
+    fetch(cfBase() + '/ledger?personId=' + cfCal.personId + '&from=' + firstDay + '&to=' + lastDay)
+      .then(function (r) { return r.json(); })
+      .then(function (ledger) {
+        cfCal.days = ledger.days || [];
+        cfRenderCalendarGrid(firstDay);
+      });
+  }
+
+  function cfRenderCalendarGrid(firstDayIso) {
+    var firstWeekday = new Date(firstDayIso + 'T00:00:00').getDay();
+    var cells = [];
+    for (var i = 0; i < firstWeekday; i++) cells.push('<div class="cf-cal-day blank"></div>');
+    cfCal.days.forEach(function (d) {
+      var dateStr = cfIsoDateOf(d.date);
+      var dayNum = new Date(d.date).getUTCDate();
+      var inflow = (d.receivedAmount || 0) + (d.othersReceivedAmount || 0);
+      var outflow = (d.billAmount || 0) + (d.noBillAmount || 0);
+      var sel = cfCal.selectedDate === dateStr ? ' selected' : '';
+      cells.push('<div class="cf-cal-day' + sel + '" data-cf-cal-date="' + dateStr + '">' +
+        '<span class="dnum">' + dayNum + '</span>' +
+        (inflow ? '<span class="din">+' + cfMoney(inflow) + '</span>' : '') +
+        (outflow ? '<span class="dout">-' + cfMoney(outflow) + '</span>' : '') +
+        '</div>');
+    });
+    document.getElementById('cfCalGrid').innerHTML = cells.join('');
+    document.getElementById('cfCalGrid').querySelectorAll('[data-cf-cal-date]').forEach(function (cell) {
+      cell.addEventListener('click', function () {
+        cfCal.selectedDate = cell.getAttribute('data-cf-cal-date');
+        cfRenderCalendarGrid(firstDayIso);
+        cfRenderCalendarDetail(cfCal.selectedDate);
+      });
+    });
+  }
+
+  function cfRenderCalendarDetail(dateStr) {
+    var d = cfCal.days.filter(function (x) { return cfIsoDateOf(x.date) === dateStr; })[0];
+    if (!d) { document.getElementById('cfCalDetail').innerHTML = ''; return; }
+    var rows = [
+      ['Previous balance', cfMoney(d.previousBalance)],
+      ['Received amount', d.receivedAmount ? cfMoney(d.receivedAmount) : '—'],
+      ['Others received', d.othersReceivedAmount ? cfMoney(d.othersReceivedAmount) + (d.othersReceivedName ? ' (' + d.othersReceivedName + ')' : '') : '—'],
+      ['No-bill paid', d.noBillAmount ? cfMoney(d.noBillAmount) + (d.noBillName ? ' — ' + d.noBillName : '') : '—'],
+      ['Bill amount', d.billAmount ? cfMoney(d.billAmount) : '—'],
+      ['Total cash in hand', cfMoney(d.totalCashInHand)],
+      ['Total expense', cfMoney(d.totalExpense)],
+      ['Balance', cfMoney(d.balance)],
+    ];
+    var html = '<div style="font-weight:700;margin-bottom:6px;">' + new Date(dateStr + 'T00:00:00').toDateString() + '</div>' +
+      rows.map(function (r) { return '<div class="cf-modal-row"><span>' + r[0] + '</span><span>' + r[1] + '</span></div>'; }).join('');
+    document.getElementById('cfCalDetail').innerHTML = html + '<div id="cfCalTxnList" style="margin-top:10px;"></div>';
+
+    fetch(cfBase() + '/transactions?personId=' + cfCal.personId + '&from=' + dateStr + '&to=' + dateStr)
+      .then(function (r) { return r.json(); })
+      .then(function (txns) {
+        cfState.reviewSource = txns;
+        if (!txns.length) return;
+        document.getElementById('cfCalTxnList').innerHTML = '<div style="font-size:11px;color:var(--faint);text-transform:uppercase;margin:8px 0 4px;">Entries this day</div>' +
+          txns.map(function (t) {
+            var actionBtn = t.type === 'bill' ? ' <button type="button" data-cf-cal-view="' + t.id + '" style="margin-left:6px;">View</button>' : '';
+            return '<div class="cf-modal-row"><span>' + (t.type === 'received' ? 'Received' : t.type === 'bill' ? 'Bill' : 'No bill') + (t.counterparty ? ' — ' + t.counterparty : '') + '</span><span>' + cfMoney(t.amount) + actionBtn + '</span></div>';
+          }).join('');
+        document.getElementById('cfCalTxnList').querySelectorAll('[data-cf-cal-view]').forEach(function (btn) {
+          btn.addEventListener('click', function () { cfOpenReview(btn.getAttribute('data-cf-cal-view')); });
+        });
+      });
+  }
+
+  // Entry point: called every time the Cash Flow tab is opened. Only does
+  // the "pick the first employee + this month" default the first time —
+  // after that it just refreshes whatever range/person the admin already
+  // has selected, same as re-opening any other tab.
+  function loadCashFlowTab() {
+    if (cfState.initialized) { cfReload(); return; }
+    cfState.initialized = true;
+    cfLoadPeople().then(function () {
+      if (!cfState.selectedPersonId && cfState.people.length) {
+        cfState.selectedPersonId = cfState.people[0].id;
+        fetch(cfBase() + '/people/' + cfState.selectedPersonId + '/mark-seen', { method: 'POST' }).catch(function () {});
+      }
+      cfApplyPreset('month');
+    });
+  }
 })();
