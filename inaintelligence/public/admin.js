@@ -2531,6 +2531,27 @@
   };
   ttRenderFns.cfLedger = function () { cfRenderLedger(); };
 
+  // All modal-overlays on this page share the same z-index, so whichever
+  // one is later in the HTML always paints on top — that's what let the
+  // Review modal get stuck behind the Day-detail modal when opened from
+  // inside it. Moving the modal to be the last element in <body> right
+  // before showing it guarantees it's always on top, regardless of where
+  // it originally sits in the markup or which modal opened it.
+  function cfShowModal(id) {
+    var el = document.getElementById(id);
+    document.body.appendChild(el);
+    el.classList.add('show');
+  }
+  function cfHideModal(id) {
+    document.getElementById(id).classList.remove('show');
+  }
+  // Click on the dimmed backdrop (not the modal box itself) closes it too.
+  ['cfReviewModal', 'cfAddPersonModal', 'cfReceivedModal', 'cfDayModal', 'cfCalendarModal'].forEach(function (id) {
+    document.getElementById(id).addEventListener('click', function (e) {
+      if (e.target === this) cfHideModal(id);
+    });
+  });
+
   function renderCashFlowShell(data) {
     var link = window.location.origin + '/cf-submit.html?account=' + accountId;
     var linkEl = document.getElementById('cfSubmitLink');
@@ -2765,7 +2786,7 @@
     ];
     document.getElementById('cfDayModalRows').innerHTML = rows.map(function (r) { return '<div class="cf-modal-row"><span>' + r[0] + '</span><span>' + r[1] + '</span></div>'; }).join('');
     document.getElementById('cfDayModalEntries').innerHTML = '<div class="cf-empty">Loading entries…</div>';
-    document.getElementById('cfDayModal').classList.add('show');
+    cfShowModal('cfDayModal');
 
     fetch(cfBase() + '/transactions?personId=' + cfState.selectedPersonId + '&from=' + dateStr + '&to=' + dateStr)
       .then(function (r) { return r.json(); })
@@ -2787,12 +2808,13 @@
           btn.addEventListener('click', function () {
             if (!window.confirm('Delete this entry?')) return;
             fetch(cfBase() + '/transactions/' + btn.getAttribute('data-cf-entry-delete'), { method: 'DELETE' })
-              .then(function () { document.getElementById('cfDayModal').classList.remove('show'); cfReload(); });
+              .then(function () { cfHideModal('cfDayModal'); cfReload(); });
           });
         });
       });
   }
-  document.getElementById('cfDayModalClose').addEventListener('click', function () { document.getElementById('cfDayModal').classList.remove('show'); });
+  document.getElementById('cfDayModalClose').addEventListener('click', function () { cfHideModal('cfDayModal'); });
+  document.getElementById('cfDayModalCloseBtn').addEventListener('click', function () { cfHideModal('cfDayModal'); });
 
   // ---- review modal (bill photo confirm/correct) ----
   function cfOpenReview(id) {
@@ -2824,16 +2846,17 @@
         }).join('');
     }
     document.getElementById('cfReviewDetails').innerHTML = detailsHtml;
-    document.getElementById('cfReviewModal').classList.add('show');
+    cfShowModal('cfReviewModal');
   }
-  document.getElementById('cfReviewClose').addEventListener('click', function () { document.getElementById('cfReviewModal').classList.remove('show'); });
+  document.getElementById('cfReviewClose').addEventListener('click', function () { cfHideModal('cfReviewModal'); });
+  document.getElementById('cfReviewCancel').addEventListener('click', function () { cfHideModal('cfReviewModal'); });
   document.getElementById('cfReviewConfirm').addEventListener('click', function () {
     fetch(cfBase() + '/transactions/' + cfState.reviewingId + '/confirm', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ amount: document.getElementById('cfReviewAmount').value, counterparty: document.getElementById('cfReviewCounterparty').value })
     }).then(function () {
-      document.getElementById('cfReviewModal').classList.remove('show');
-      document.getElementById('cfDayModal').classList.remove('show');
+      cfHideModal('cfReviewModal');
+      cfHideModal('cfDayModal');
       cfReload();
     });
   });
@@ -2841,9 +2864,10 @@
   // ---- add employee modal ----
   document.getElementById('cfAddPersonBtn').addEventListener('click', function () {
     document.getElementById('cfAddPersonName').value = '';
-    document.getElementById('cfAddPersonModal').classList.add('show');
+    cfShowModal('cfAddPersonModal');
   });
-  document.getElementById('cfAddPersonClose').addEventListener('click', function () { document.getElementById('cfAddPersonModal').classList.remove('show'); });
+  document.getElementById('cfAddPersonClose').addEventListener('click', function () { cfHideModal('cfAddPersonModal'); });
+  document.getElementById('cfAddPersonCancel').addEventListener('click', function () { cfHideModal('cfAddPersonModal'); });
   document.getElementById('cfAddPersonSave').addEventListener('click', function () {
     var name = document.getElementById('cfAddPersonName').value.trim();
     if (!name) { showToast('Enter a name.'); return; }
@@ -2853,7 +2877,7 @@
     }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (res) {
         if (!res.ok) { showToast(res.d.error || 'Could not add employee.'); return; }
-        document.getElementById('cfAddPersonModal').classList.remove('show');
+        cfHideModal('cfAddPersonModal');
         cfLoadPeople().then(cfReload);
       });
   });
@@ -2862,9 +2886,10 @@
   document.getElementById('cfLogReceivedBtn').addEventListener('click', function () {
     if (cfState.selectedPersonId) document.getElementById('cfRecvPerson').value = cfState.selectedPersonId;
     document.getElementById('cfRecvDate').value = new Date().toISOString().slice(0, 10);
-    document.getElementById('cfReceivedModal').classList.add('show');
+    cfShowModal('cfReceivedModal');
   });
-  document.getElementById('cfReceivedClose').addEventListener('click', function () { document.getElementById('cfReceivedModal').classList.remove('show'); });
+  document.getElementById('cfReceivedClose').addEventListener('click', function () { cfHideModal('cfReceivedModal'); });
+  document.getElementById('cfRecvCancel').addEventListener('click', function () { cfHideModal('cfReceivedModal'); });
   document.getElementById('cfRecvSave').addEventListener('click', function () {
     var amount = document.getElementById('cfRecvAmount').value;
     if (!amount || Number(amount) <= 0) { showToast('Enter an amount.'); return; }
@@ -2875,7 +2900,7 @@
         counterparty: document.getElementById('cfRecvSource').value, txnDate: document.getElementById('cfRecvDate').value
       })
     }).then(function (r) { return r.json(); }).then(function () {
-      document.getElementById('cfReceivedModal').classList.remove('show');
+      cfHideModal('cfReceivedModal');
       document.getElementById('cfRecvAmount').value = '';
       document.getElementById('cfRecvSource').value = '';
       cfReload();
@@ -2912,10 +2937,11 @@
     cfCal.month = now.getMonth();
     cfCal.selectedDate = null;
     document.getElementById('cfCalTitle').textContent = personName + ' — Calendar';
-    document.getElementById('cfCalendarModal').classList.add('show');
+    cfShowModal('cfCalendarModal');
     cfLoadCalendarMonth();
   }
-  document.getElementById('cfCalClose').addEventListener('click', function () { document.getElementById('cfCalendarModal').classList.remove('show'); });
+  document.getElementById('cfCalClose').addEventListener('click', function () { cfHideModal('cfCalendarModal'); });
+  document.getElementById('cfCalCloseBtn').addEventListener('click', function () { cfHideModal('cfCalendarModal'); });
   document.getElementById('cfCalPrev').addEventListener('click', function () {
     cfCal.month -= 1;
     if (cfCal.month < 0) { cfCal.month = 11; cfCal.year -= 1; }

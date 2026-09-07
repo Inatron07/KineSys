@@ -982,7 +982,10 @@
       <div id="cfReviewDetails" style="margin-bottom:14px;"></div>
       <div class="na-field" style="margin-bottom:14px;"><label for="cfReviewAmount">Amount</label><input type="number" id="cfReviewAmount" step="0.01"></div>
       <div class="na-field" style="margin-bottom:18px;"><label for="cfReviewCounterparty">Vendor / counterparty</label><input type="text" id="cfReviewCounterparty"></div>
-      <button class="btn btn-primary" id="cfReviewConfirm" type="button" style="width:100%;padding:12px;font-size:13px;">Confirm correct</button>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-secondary" id="cfReviewCancel" type="button" style="padding:12px;font-size:13px;">Cancel</button>
+        <button class="btn btn-primary" id="cfReviewConfirm" type="button" style="flex:1;padding:12px;font-size:13px;">Confirm correct</button>
+      </div>
     </div>
   </div>
 </div>
@@ -995,7 +998,10 @@
     </div>
     <div class="modal-body">
       <div class="na-field" style="margin-bottom:18px;"><label for="cfAddPersonName">Name</label><input type="text" id="cfAddPersonName" placeholder="e.g. Arbab"></div>
-      <button class="btn btn-primary" id="cfAddPersonSave" type="button" style="width:100%;padding:12px;font-size:13px;">Add</button>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-secondary" id="cfAddPersonCancel" type="button" style="padding:12px;font-size:13px;">Cancel</button>
+        <button class="btn btn-primary" id="cfAddPersonSave" type="button" style="flex:1;padding:12px;font-size:13px;">Add</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1011,7 +1017,10 @@
       <div class="na-field" style="margin-bottom:14px;"><label for="cfRecvAmount">Amount</label><input type="number" id="cfRecvAmount" step="0.01"></div>
       <div class="na-field" style="margin-bottom:14px;"><label for="cfRecvSource">From / source (optional)</label><input type="text" id="cfRecvSource" placeholder="e.g. ATM, DIB, Owner"></div>
       <div class="na-field" style="margin-bottom:18px;"><label for="cfRecvDate">Date</label><input type="date" id="cfRecvDate"></div>
-      <button class="btn btn-primary" id="cfRecvSave" type="button" style="width:100%;padding:12px;font-size:13px;">Save</button>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-secondary" id="cfRecvCancel" type="button" style="padding:12px;font-size:13px;">Cancel</button>
+        <button class="btn btn-primary" id="cfRecvSave" type="button" style="flex:1;padding:12px;font-size:13px;">Save</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1025,6 +1034,7 @@
     <div class="modal-body">
       <div id="cfDayModalRows"></div>
       <div id="cfDayModalEntries" style="margin-top:12px;"></div>
+      <button class="btn btn-secondary" id="cfDayModalCloseBtn" type="button" style="width:100%;padding:12px;font-size:13px;margin-top:16px;">Close</button>
     </div>
   </div>
 </div>
@@ -1050,6 +1060,7 @@
       </div>
       <div class="cf-cal-grid" id="cfCalGrid"></div>
       <div class="cf-cal-detail" id="cfCalDetail"></div>
+      <button class="btn btn-secondary" id="cfCalCloseBtn" type="button" style="width:100%;padding:12px;font-size:13px;margin-top:16px;">Close</button>
     </div>
   </div>
 </div>
