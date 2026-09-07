@@ -18,8 +18,8 @@
   body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
 
   .shell{min-height:100vh;display:grid;grid-template-columns:1.05fr 0.95fr;}
-  .pitch{padding:48px 6vw;display:flex;flex-direction:column;justify-content:center;border-right:1px solid var(--border);}
-  .brand{display:flex;align-items:center;gap:14px;font-weight:700;font-size:28px;margin-bottom:36px;}
+  .pitch{padding:48px 6vw;display:flex;flex-direction:column;justify-content:center;border-right:1px solid var(--border);min-width:0;}
+  .brand{display:flex;flex-wrap:wrap;align-items:center;gap:14px;font-weight:700;font-size:28px;margin-bottom:36px;min-width:0;}
   .brand .logo-mark{width:46px;height:46px;flex-shrink:0;}
   .brand .accent{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;}
   .brand .brand-sep{color:var(--faint);font-weight:400;margin:0 4px;}
@@ -83,13 +83,39 @@
     .form-wrap{padding:40px 6vw;}
     .preview-area{max-width:none;min-height:200px;}
   }
+
+  /* ---- phones: most people opening this link are on a phone and just
+     want to fill in the form, not read a pitch — so on small screens we
+     shrink the branding to a compact bar, drop the marketing copy, and
+     hide the bill preview box entirely until there's actually something
+     to preview (it gets the .has-content class from JS once a photo/PDF
+     is chosen), so the name field is visible right away without scrolling. */
+  @media (max-width:640px){
+    body{padding:0;}
+    .pitch{padding:18px 5vw 6px;}
+    .brand{font-size:19px;gap:8px;margin-bottom:10px;}
+    .brand .logo-mark{width:30px;height:30px;}
+    .brand .brand-sub{font-size:14px;}
+    .kicker{display:none;}
+    .pitch h1{display:none;}
+    .pitch > p{display:none;}
+    .preview-area{display:none;min-height:0;padding:14px;margin-top:2px;}
+    .preview-area.has-content{display:flex;}
+    .form-wrap{padding:8px 5vw 40px;}
+    .card{padding:20px;border-radius:14px;}
+    h2.form-title{font-size:18px;}
+    select, input[type=text], input[type=number], input[type=date]{font-size:16px;} /* 16px prevents iOS auto-zoom on focus */
+    .toggle button{padding:15px 10px;font-size:14px;}
+    .file-row button{flex:1;padding:13px 10px;}
+    .submit-btn{padding:17px;font-size:16.5px;}
+  }
 </style>
 </head>
 <body>
   <div class="shell">
     <div class="pitch">
       <div class="brand">
-        <img src="logo.svg" class="logo-mark" alt="KineSys">
+        <img src="logo-light.svg" class="logo-mark" alt="KineSys">
         <span>Kine<span class="accent">Sys</span></span><span class="brand-sep">/</span><span class="brand-sub">InaIntelligence</span>
       </div>
       <div class="kicker">Cash Flow Tracker</div>
@@ -187,15 +213,18 @@
   }
 
   function resetPreview() {
+    $('previewArea').classList.remove('has-content');
     $('previewArea').innerHTML = '<span class="placeholder-icon">🧾</span><span>Your bill photo or PDF will preview here once you add one.</span>';
   }
 
   function showImagePreview(blob) {
     var url = URL.createObjectURL(blob);
+    $('previewArea').classList.add('has-content');
     $('previewArea').innerHTML = '<img src="' + url + '" alt="bill preview">';
   }
 
   function showPdfPreview(filename) {
+    $('previewArea').classList.add('has-content');
     $('previewArea').innerHTML = '<span class="pdf-badge">📄</span><span class="fname">' + filename + '</span>';
   }
 
