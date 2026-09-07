@@ -2516,6 +2516,15 @@
   function cfMoneyOrBlank(n) { return n ? cfMoney(n) : ''; }
   function cfIsoDateOf(d) { return new Date(d).toISOString().slice(0, 10); }
   function cfIsoDate(y, m, day) { return y + '-' + String(m + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0'); }
+  // Cash Flow dates/times are always shown in UAE time (Asia/Dubai, UTC+4),
+  // regardless of where the admin happens to be viewing from — the client's
+  // whole operation runs on UAE time, so "today" and "this entry's time"
+  // should mean the same thing to everyone looking at this dashboard.
+  function cfFmtDay(d) { return new Date(d).toLocaleDateString('en-US', { timeZone: 'Asia/Dubai', year: 'numeric', month: 'short', day: 'numeric' }); }
+  function cfFmtDateTime(ts) {
+    if (!ts) return '';
+    return new Date(ts).toLocaleString('en-US', { timeZone: 'Asia/Dubai', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' (UAE)';
+  }
 
   ttVisibleIds.cfLedger = function () {
     return cfState.ledgerDays.filter(function (d) { return d.entryCount > 0; }).map(function (d) { return cfIsoDateOf(d.date); });
@@ -2690,14 +2699,16 @@
       var flag = d.needsReviewCount > 0 ? '<span class="cf-flag">&#9888; Check total</span>' : '';
       var viewBtn = hasEntries ? '<button type="button" data-cf-view-day="' + dateStr + '">View</button>' : '';
       var invoiceLinks = (d.billIds || []).map(function (id, i) {
-        return '<a href="' + cfBase() + '/transactions/' + id + '/image" target="_blank" rel="noopener">&#128206;' + (d.billIds.length > 1 ? (i + 1) : '') + '</a>';
+        var mime = (d.billMimes && d.billMimes[i]) || '';
+        var label = mime.indexOf('pdf') !== -1 ? 'PDF attachment' : 'Photo attachment';
+        return '<a href="' + cfBase() + '/transactions/' + id + '/image" target="_blank" rel="noopener" style="display:block;">&#128206; ' + label + (d.billIds.length > 1 ? ' ' + (i + 1) : '') + '</a>';
       }).join('') || '—';
       var validateBtn = (d.reviewIds || []).length
         ? '<button type="button" data-cf-validate-day="' + dateStr + '" data-cf-validate-id="' + d.reviewIds[0] + '">&#10003; Validate' + (d.reviewIds.length > 1 ? ' (' + d.reviewIds.length + ')' : '') + '</button>'
         : '—';
       return '<tr class="' + (d.needsReviewCount > 0 ? 'cf-needs-review' : '') + '">' +
         '<td class="tt-check-col">' + checkbox + '</td>' +
-        '<td>' + fmtDate(new Date(d.date).getTime()) + '</td>' +
+        '<td>' + cfFmtDay(d.date) + '</td>' +
         '<td>' + cfMoneyOrBlank(d.previousBalance) + '</td>' +
         '<td>' + cfMoneyOrBlank(d.receivedAmount) + '</td>' +
         '<td></td>' +
@@ -2766,7 +2777,7 @@
             var label = (t.type === 'received' ? 'Received' : t.type === 'bill' ? 'Bill' : 'No bill') + (t.counterparty ? ' — ' + t.counterparty : '');
             var flag = t.needs_review ? ' <span class="cf-flag">&#9888;</span>' : '';
             var viewBtn = t.type === 'bill' ? '<button type="button" data-cf-entry-view="' + t.id + '" style="margin-left:6px;">View</button>' : '';
-            return '<div class="cf-entry-row"><span>' + label + flag + '</span><span>' + cfMoney(t.amount) + viewBtn +
+            return '<div class="cf-entry-row"><span>' + label + flag + '<br><span style="font-size:10.5px;color:var(--faint);">' + cfFmtDateTime(t.created_at) + '</span></span><span>' + cfMoney(t.amount) + viewBtn +
               ' <button type="button" data-cf-entry-delete="' + t.id + '" style="margin-left:6px;color:var(--warn);">Delete</button></span></div>';
           }).join('');
         document.getElementById('cfDayModalEntries').querySelectorAll('[data-cf-entry-view]').forEach(function (btn) {
@@ -2810,6 +2821,26 @@
     });
   });
 
+  // ---- add employee modal ----
+  document.getElementById('cfAddPersonBtn').addEventListener('click', function () {
+    document.getElementById('cfAddPersonName').value = '';
+    document.getElementById('cfAddPersonModal').classList.add('show');
+  });
+  document.getElementById('cfAddPersonClose').addEventListener('click', function () { document.getElementById('cfAddPersonModal').classList.remove('show'); });
+  document.getElementById('cfAddPersonSave').addEventListener('click', function () {
+    var name = document.getElementById('cfAddPersonName').value.trim();
+    if (!name) { showToast('Enter a name.'); return; }
+    fetch(cfBase() + '/people', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name })
+    }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (!res.ok) { showToast(res.d.error || 'Could not add employee.'); return; }
+        document.getElementById('cfAddPersonModal').classList.remove('show');
+        cfLoadPeople().then(cfReload);
+      });
+  });
+
   // ---- log received modal ----
   document.getElementById('cfLogReceivedBtn').addEventListener('click', function () {
     if (cfState.selectedPersonId) document.getElementById('cfRecvPerson').value = cfState.selectedPersonId;
@@ -2832,6 +2863,16 @@
       document.getElementById('cfRecvSource').value = '';
       cfReload();
     });
+  });
+
+  // ---- refresh (reload this tab's data without reloading the page) ----
+  document.getElementById('cfRefreshBtn').addEventListener('click', function () {
+    var btn = document.getElementById('cfRefreshBtn');
+    var original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '&#8635; Refreshing…';
+    cfReload();
+    setTimeout(function () { btn.disabled = false; btn.innerHTML = original; showToast('Ledger refreshed.'); }, 400);
   });
 
   // ---- export ----
@@ -2935,7 +2976,8 @@
         document.getElementById('cfCalTxnList').innerHTML = '<div style="font-size:11px;color:var(--faint);text-transform:uppercase;margin:8px 0 4px;">Entries this day</div>' +
           txns.map(function (t) {
             var actionBtn = t.type === 'bill' ? ' <button type="button" data-cf-cal-view="' + t.id + '" style="margin-left:6px;">View</button>' : '';
-            return '<div class="cf-modal-row"><span>' + (t.type === 'received' ? 'Received' : t.type === 'bill' ? 'Bill' : 'No bill') + (t.counterparty ? ' — ' + t.counterparty : '') + '</span><span>' + cfMoney(t.amount) + actionBtn + '</span></div>';
+            var label = (t.type === 'received' ? 'Received' : t.type === 'bill' ? 'Bill' : 'No bill') + (t.counterparty ? ' — ' + t.counterparty : '');
+            return '<div class="cf-modal-row"><span>' + label + '<br><span style="font-size:10.5px;color:var(--faint);">' + cfFmtDateTime(t.created_at) + '</span></span><span>' + cfMoney(t.amount) + actionBtn + '</span></div>';
           }).join('');
         document.getElementById('cfCalTxnList').querySelectorAll('[data-cf-cal-view]').forEach(function (btn) {
           btn.addEventListener('click', function () { cfOpenReview(btn.getAttribute('data-cf-cal-view')); });

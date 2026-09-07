@@ -128,6 +128,7 @@
             <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
               <div class="cf-linkbox">Submit link: <code id="cfSubmitLink"></code><button class="tt-reset" type="button" id="cfCopyLinkBtn" style="margin-left:4px;">Copy</button></div>
               <button class="btn btn-secondary" id="cfExportBtn" type="button" style="padding:8px 14px;font-size:11.5px;">&#8595; Export Excel</button>
+              <button class="btn btn-secondary" id="cfAddPersonBtn" type="button" style="padding:8px 14px;font-size:11.5px;">+ Add employee</button>
               <button class="btn btn-primary" id="cfLogReceivedBtn" type="button" style="padding:8px 14px;font-size:11.5px;width:auto;">+ Log cash received</button>
             </div>
           </div>
@@ -149,7 +150,10 @@
           <div id="cfLedgerWrap" style="display:none;">
             <div class="cf-section-label" style="margin:20px 18px 8px;">
               <span>Ledger &amp; transactions — same columns as the Excel export, latest first</span>
-              <button type="button" class="cf-cal-btn" id="cfCalOpenBtn">&#128197; Calendar</button>
+              <div style="display:flex;gap:8px;">
+                <button type="button" class="cf-cal-btn" id="cfRefreshBtn" title="Reload this ledger without refreshing the page">&#8635; Refresh</button>
+                <button type="button" class="cf-cal-btn" id="cfCalOpenBtn">&#128197; Calendar</button>
+              </div>
             </div>
             <div id="cfSelectionBar" style="margin:0 18px;"></div>
             <div class="cf-scroll-x" style="margin:0 18px 18px;">
@@ -978,6 +982,19 @@
       <div class="na-field" style="margin-bottom:14px;"><label for="cfReviewAmount">Amount</label><input type="number" id="cfReviewAmount" step="0.01"></div>
       <div class="na-field" style="margin-bottom:18px;"><label for="cfReviewCounterparty">Vendor / counterparty</label><input type="text" id="cfReviewCounterparty"></div>
       <button class="btn btn-primary" id="cfReviewConfirm" type="button" style="width:100%;padding:12px;font-size:13px;">Confirm correct</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="cfAddPersonModal">
+  <div class="modal cf-modal">
+    <div class="modal-head">
+      <h3>Add employee</h3>
+      <button class="modal-close" id="cfAddPersonClose" type="button">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="na-field" style="margin-bottom:18px;"><label for="cfAddPersonName">Name</label><input type="text" id="cfAddPersonName" placeholder="e.g. Arbab"></div>
+      <button class="btn btn-primary" id="cfAddPersonSave" type="button" style="width:100%;padding:12px;font-size:13px;">Add</button>
     </div>
   </div>
 </div>

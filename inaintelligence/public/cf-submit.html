@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Log a payment — InaIntelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#eef1f7; --card:#ffffff; --surface2:#f3f5fb; --border:#dbe1ee;
@@ -12,21 +14,37 @@
     --accent:#0f6fb0; --danger:#d64545; --ok:#0e8f5f;
   }
   *{box-sizing:border-box;}
-  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px;}
-  .brand{display:flex;align-items:center;gap:8px;justify-content:center;margin:4px 0 18px;font-weight:700;font-size:15px;}
-  .brand .logo-mark{width:26px;height:26px;flex-shrink:0;}
+  html,body{height:100%;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+
+  .shell{min-height:100vh;display:grid;grid-template-columns:1.05fr 0.95fr;}
+  .pitch{padding:48px 6vw;display:flex;flex-direction:column;justify-content:center;border-right:1px solid var(--border);}
+  .brand{display:flex;align-items:center;gap:14px;font-weight:700;font-size:28px;margin-bottom:36px;}
+  .brand .logo-mark{width:46px;height:46px;flex-shrink:0;}
   .brand .accent{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;}
-  .brand .brand-sep{color:var(--faint);font-weight:400;margin:0 3px;}
-  .card{max-width:480px;margin:0 auto;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;box-shadow:0 1px 3px rgba(16,26,48,.06);}
-  h1{font-size:18px;margin:0 0 4px;}
-  .sub{color:var(--muted);font-size:13px;margin:0 0 18px;}
-  label{display:block;font-size:12px;color:var(--muted);margin:14px 0 6px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;}
+  .brand .brand-sep{color:var(--faint);font-weight:400;margin:0 4px;}
+  .brand .brand-sub{color:var(--muted);font-weight:500;font-size:19px;}
+  .kicker{font-size:12.5px;letter-spacing:.1em;color:var(--accent);margin-bottom:14px;text-transform:uppercase;font-weight:700;}
+  .pitch h1{font-size:clamp(1.7rem,3vw,2.4rem);font-weight:800;line-height:1.2;margin:0 0 14px;}
+  .pitch > p{font-size:15px;color:var(--muted);line-height:1.65;margin:0 0 28px;max-width:460px;}
+
+  .preview-area{border:2px dashed var(--border);border-radius:16px;min-height:280px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--faint);font-size:13px;background:var(--surface2);padding:20px;max-width:460px;text-align:center;}
+  .preview-area img{max-width:100%;max-height:360px;border-radius:12px;border:1px solid var(--border);object-fit:contain;}
+  .preview-area .pdf-badge{font-size:52px;line-height:1;}
+  .preview-area .fname{font-size:12.5px;color:var(--muted);font-weight:600;word-break:break-all;padding:0 8px;}
+  .preview-area .placeholder-icon{font-size:34px;opacity:.5;}
+
+  .form-wrap{padding:48px 6vw;display:flex;flex-direction:column;justify-content:center;}
+  .card{max-width:520px;width:100%;margin:0 auto;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:30px;box-shadow:0 1px 3px rgba(16,26,48,.06);}
+  h2.form-title{font-size:20px;margin:0 0 4px;}
+  .sub{color:var(--muted);font-size:13.5px;margin:0 0 22px;}
+  label{display:block;font-size:12px;color:var(--muted);margin:16px 0 7px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;}
   select, input[type=text], input[type=number], input[type=date], textarea{
-    width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:15px;
+    width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:15.5px;font-family:inherit;
   }
   select:focus, input:focus, textarea:focus{outline:none;border-color:var(--accent);}
-  .toggle{display:flex;gap:8px;margin-top:14px;}
-  .toggle button{flex:1;padding:11px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);font-size:14px;font-weight:600;cursor:pointer;}
+  .toggle{display:flex;gap:8px;margin-top:16px;}
+  .toggle button{flex:1;padding:13px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);font-size:14.5px;font-weight:700;cursor:pointer;font-family:inherit;}
   .toggle button.active{background:var(--accent);border-color:var(--accent);color:#ffffff;}
   .panel{display:none;}
   .panel.show{display:block;}
@@ -38,29 +56,68 @@
   .cam-actions{position:absolute;bottom:12px;left:0;right:0;display:flex;justify-content:center;gap:10px;}
   .cam-actions button{padding:10px 18px;border-radius:999px;border:none;background:#fff;color:#111;font-weight:700;font-size:14px;cursor:pointer;}
   .cam-actions button.secondary{background:rgba(0,0,0,.55);color:#fff;}
-  .file-row{display:flex;gap:8px;margin-top:12px;align-items:center;}
-  .file-row button{padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;cursor:pointer;}
+  .file-row{display:flex;gap:8px;margin-top:14px;align-items:center;}
+  .file-row button{padding:11px 15px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13.5px;cursor:pointer;font-family:inherit;}
   .file-name{color:var(--muted);font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .preview-thumb{margin-top:12px;max-width:100%;border-radius:10px;border:1px solid var(--border);display:none;}
-  .preview-thumb.show{display:block;}
-  .submit-btn{width:100%;margin-top:20px;padding:14px;border:none;border-radius:12px;background:var(--ok);color:#ffffff;font-size:15px;font-weight:700;cursor:pointer;}
+  .submit-btn{width:100%;margin-top:24px;padding:16px;border:none;border-radius:12px;background:var(--ok);color:#ffffff;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;}
   .submit-btn:disabled{opacity:.6;cursor:default;}
   .toast{position:fixed;left:16px;right:16px;bottom:16px;max-width:448px;margin:0 auto;padding:12px 16px;border-radius:10px;font-size:14px;text-align:center;display:none;z-index:10;box-shadow:0 4px 16px rgba(16,26,48,.18);}
   .toast.ok{background:var(--ok);color:#ffffff;}
   .toast.err{background:var(--danger);color:#ffffff;}
-  .hint{font-size:12px;color:var(--muted);margin-top:6px;}
+  .hint{font-size:12px;color:var(--muted);margin-top:8px;}
   .error-card{max-width:480px;margin:60px auto 0;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;text-align:center;color:var(--muted);}
+
+  /* ---- success confirmation overlay ---- */
+  .success-overlay{display:none;position:fixed;inset:0;background:rgba(16,26,48,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);align-items:center;justify-content:center;z-index:50;padding:16px;}
+  .success-overlay.show{display:flex;}
+  .success-box{background:var(--card);border-radius:20px;padding:44px 36px;max-width:380px;width:100%;text-align:center;box-shadow:0 24px 70px rgba(16,26,48,.28);}
+  .check-circle{width:88px;height:88px;border-radius:50%;background:var(--ok);color:#fff;display:flex;align-items:center;justify-content:center;margin:0 auto 22px;box-shadow:0 8px 24px rgba(14,143,95,.35);}
+  .check-circle svg{width:48px;height:48px;}
+  .success-box h2{margin:0 0 10px;font-size:21px;}
+  .success-box p{margin:0 0 26px;color:var(--muted);font-size:14px;line-height:1.6;}
+  .success-box button{width:100%;padding:14px;border:none;border-radius:11px;background:var(--accent);color:#fff;font-weight:700;font-size:14.5px;cursor:pointer;font-family:inherit;}
+
+  @media (max-width:900px){
+    .shell{grid-template-columns:1fr;}
+    .pitch{border-right:none;border-bottom:1px solid var(--border);padding:40px 6vw;}
+    .form-wrap{padding:40px 6vw;}
+    .preview-area{max-width:none;min-height:200px;}
+  }
 </style>
 </head>
 <body>
-  <div class="brand">
-    <img src="logo.svg" class="logo-mark" alt="KineSys">
-    <span>Kine<span class="accent">Sys</span></span><span class="brand-sep">/</span><span>InaIntelligence</span>
+  <div class="shell">
+    <div class="pitch">
+      <div class="brand">
+        <img src="logo.svg" class="logo-mark" alt="KineSys">
+        <span>Kine<span class="accent">Sys</span></span><span class="brand-sep">/</span><span class="brand-sub">InaIntelligence</span>
+      </div>
+      <div class="kicker">Cash Flow Tracker</div>
+      <h1>Log a payment</h1>
+      <p>Pick your name, then log either a bill (with photo) or a payment with no bill. Bill photos are automatically read and sent for review.</p>
+      <div class="preview-area" id="previewArea">
+        <span class="placeholder-icon">🧾</span>
+        <span>Your bill photo or PDF will preview here once you add one.</span>
+      </div>
+    </div>
+
+    <div class="form-wrap">
+      <div id="app"></div>
+    </div>
   </div>
 
-  <div id="app"></div>
-
   <div class="toast" id="toast"></div>
+
+  <div class="success-overlay" id="successOverlay">
+    <div class="success-box">
+      <div class="check-circle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+      </div>
+      <h2 id="successTitle">Bill received!</h2>
+      <p id="successMsg">We've received your bill and sent it ahead for processing.</p>
+      <button type="button" id="successCloseBtn">Log another payment</button>
+    </div>
+  </div>
 
 <script>
 (function () {
@@ -76,7 +133,7 @@
 
   app.innerHTML =
     '<div class="card">' +
-      '<h1>Log a payment</h1>' +
+      '<h2 class="form-title">Log a payment</h2>' +
       '<p class="sub">Pick your name, then log either a bill (with photo) or a payment with no bill.</p>' +
       '<label for="person">Name</label>' +
       '<select id="person"><option value="">Loading…</option></select>' +
@@ -100,7 +157,6 @@
         '</div>' +
         '<input type="file" id="fileInput" accept="image/*,application/pdf" style="display:none;">' +
         '<div class="file-name" id="fileName"></div>' +
-        '<img id="previewImg" class="preview-thumb" alt="preview">' +
         '<label for="billAmount">Amount (if you know it — optional but helps catch misreads)</label>' +
         '<input type="number" id="billAmount" placeholder="e.g. 350" min="0" step="0.01">' +
         '<label for="billDate">Date</label>' +
@@ -129,6 +185,33 @@
     t.style.display = 'block';
     setTimeout(function () { t.style.display = 'none'; }, 3500);
   }
+
+  function resetPreview() {
+    $('previewArea').innerHTML = '<span class="placeholder-icon">🧾</span><span>Your bill photo or PDF will preview here once you add one.</span>';
+  }
+
+  function showImagePreview(blob) {
+    var url = URL.createObjectURL(blob);
+    $('previewArea').innerHTML = '<img src="' + url + '" alt="bill preview">';
+  }
+
+  function showPdfPreview(filename) {
+    $('previewArea').innerHTML = '<span class="pdf-badge">📄</span><span class="fname">' + filename + '</span>';
+  }
+
+  function showSuccess(kind) {
+    if (kind === 'bill') {
+      $('successTitle').textContent = 'Bill received!';
+      $('successMsg').textContent = "We've received your bill and sent it ahead for processing.";
+    } else {
+      $('successTitle').textContent = 'Payment logged!';
+      $('successMsg').textContent = 'Your no-bill payment has been recorded.';
+    }
+    $('successOverlay').classList.add('show');
+  }
+  $('successCloseBtn').addEventListener('click', function () {
+    $('successOverlay').classList.remove('show');
+  });
 
   var today = new Date().toISOString().slice(0, 10);
   $('billDate').value = today;
@@ -159,6 +242,7 @@
     $('tabNoBill').classList.toggle('active', mode === 'no_bill');
     $('panelBill').classList.toggle('show', mode === 'bill');
     $('panelNoBill').classList.toggle('show', mode === 'no_bill');
+    resetPreview();
   }
 
   // ---- camera capture with alignment guide ----
@@ -188,9 +272,7 @@
       state.capturedMime = 'image/jpeg';
       state.capturedIsPdf = false;
       $('fileName').textContent = 'Photo captured';
-      var img = $('previewImg');
-      img.src = URL.createObjectURL(blob);
-      img.classList.add('show');
+      showImagePreview(blob);
       stopCamera();
     }, 'image/jpeg', 0.9);
   });
@@ -204,12 +286,10 @@
     state.capturedMime = f.type || 'application/octet-stream';
     state.capturedIsPdf = state.capturedMime === 'application/pdf';
     $('fileName').textContent = f.name;
-    var img = $('previewImg');
     if (state.capturedIsPdf) {
-      img.classList.remove('show');
+      showPdfPreview(f.name);
     } else {
-      img.src = URL.createObjectURL(f);
-      img.classList.add('show');
+      showImagePreview(f);
     }
   });
 
@@ -236,7 +316,7 @@
         .then(function (res) {
           btn.disabled = false; btn.textContent = 'Submit';
           if (!res.ok) return toast(res.d.error || 'Could not submit.', false);
-          toast('Bill logged.', true);
+          showSuccess('bill');
           resetForm();
         })
         .catch(function () { btn.disabled = false; btn.textContent = 'Submit'; toast('Network error — try again.', false); });
@@ -254,7 +334,7 @@
         .then(function (res) {
           btn.disabled = false; btn.textContent = 'Submit';
           if (!res.ok) return toast(res.d.error || 'Could not submit.', false);
-          toast('Payment logged.', true);
+          showSuccess('no_bill');
           resetForm();
         })
         .catch(function () { btn.disabled = false; btn.textContent = 'Submit'; toast('Network error — try again.', false); });
@@ -264,10 +344,10 @@
   function resetForm() {
     state.capturedBlob = null;
     $('fileName').textContent = '';
-    $('previewImg').classList.remove('show');
     $('billAmount').value = '';
     $('nbAmount').value = '';
     $('nbTo').value = '';
+    resetPreview();
   }
 })();
 </script>

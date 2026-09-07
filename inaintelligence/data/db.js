@@ -1756,7 +1756,8 @@ async function getCfPersonDailyLedger(accountId, personId, from, to) {
        STRING_AGG(DISTINCT CASE WHEN t.type='no_bill' THEN t.counterparty END, ', ') AS no_bill_name,
        COUNT(t.id) AS entry_count,
        COALESCE(SUM(CASE WHEN t.needs_review THEN 1 ELSE 0 END), 0) AS needs_review_count,
-       ARRAY_AGG(t.id) FILTER (WHERE t.type = 'bill') AS bill_ids,
+       ARRAY_AGG(t.id ORDER BY t.created_at) FILTER (WHERE t.type = 'bill') AS bill_ids,
+       ARRAY_AGG(t.image_mime ORDER BY t.created_at) FILTER (WHERE t.type = 'bill') AS bill_mimes,
        ARRAY_AGG(t.id) FILTER (WHERE t.needs_review) AS review_ids
      FROM generate_series($3::date, $4::date, interval '1 day') d
      LEFT JOIN cf_transactions t ON t.account_id = $1 AND t.person_id = $2 AND t.txn_date = d::date
@@ -1793,6 +1794,7 @@ async function getCfPersonDailyLedger(accountId, personId, from, to) {
       entryCount: Number(r.entry_count),
       needsReviewCount: Number(r.needs_review_count),
       billIds: r.bill_ids || [],
+      billMimes: r.bill_mimes || [],
       reviewIds: r.review_ids || [],
     };
   });
