@@ -2716,7 +2716,7 @@
         '<td>' + (d.othersReceivedName || '') + '</td>' +
         '<td>' + cfMoneyOrBlank(d.noBillAmount) + '</td>' +
         '<td>' + (d.noBillName || '') + '</td>' +
-        '<td>' + cfMoneyOrBlank(d.billAmount) + '</td>' +
+        '<td>' + cfMoneyOrBlank(d.billAmount) + (d.billVendorName ? '<br><span style="font-size:10.5px;color:var(--faint);font-weight:400;">' + d.billVendorName + '</span>' : '') + '</td>' +
         '<td>' + cfMoneyOrBlank(d.totalCashInHand) + '</td>' +
         '<td>' + cfMoneyOrBlank(d.totalExpense) + '</td>' +
         '<td>' + cfMoneyOrBlank(d.balance) + '</td>' +
@@ -2807,6 +2807,23 @@
     if (typeof t.confidence === 'number') notesBits.push('Claude confidence: ' + Math.round(t.confidence * 100) + '%');
     if (extraction.notes) notesBits.push(extraction.notes);
     document.getElementById('cfReviewNotes').textContent = notesBits.join(' — ');
+
+    // Particulars/quantity and invoice number that Claude read off the bill,
+    // if the receipt was itemized — read-only context alongside the
+    // editable amount/vendor fields above.
+    var detailsHtml = '';
+    if (extraction.invoiceNumber) {
+      detailsHtml += '<div class="cf-modal-row"><span>Invoice / bill no.</span><span>' + extraction.invoiceNumber + '</span></div>';
+    }
+    if (Array.isArray(extraction.lineItems) && extraction.lineItems.length) {
+      detailsHtml += '<div style="font-size:11px;color:var(--faint);text-transform:uppercase;margin:10px 0 4px;">Items on this bill</div>' +
+        extraction.lineItems.map(function (li) {
+          var qty = li.quantity ? ' (' + li.quantity + ')' : '';
+          var amt = li.amount ? cfMoney(li.amount) : '';
+          return '<div class="cf-modal-row"><span>' + li.description + qty + '</span><span>' + amt + '</span></div>';
+        }).join('');
+    }
+    document.getElementById('cfReviewDetails').innerHTML = detailsHtml;
     document.getElementById('cfReviewModal').classList.add('show');
   }
   document.getElementById('cfReviewClose').addEventListener('click', function () { document.getElementById('cfReviewModal').classList.remove('show'); });

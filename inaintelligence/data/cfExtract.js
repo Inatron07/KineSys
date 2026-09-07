@@ -32,6 +32,20 @@ const RECORD_BILL_TOOL = {
       currency: { type: 'string', description: 'Currency if shown, e.g. AED, INR. Empty string if not legible.' },
       vendor: { type: 'string', description: 'The shop/vendor/business name on the bill. Empty string if not legible.' },
       date: { type: 'string', description: 'The date on the bill in YYYY-MM-DD format if legible, otherwise empty string.' },
+      invoiceNumber: { type: 'string', description: 'The invoice/bill/receipt number printed on the bill (e.g. "INV-1029", "Bill No. 4471"), if visible. Empty string if not present or not legible.' },
+      lineItems: {
+        type: 'array',
+        description: 'Individual items/particulars listed on the bill, if it is itemized (a grocery or supply receipt, for example). Leave as an empty array if the bill just shows a single total with no item breakdown.',
+        items: {
+          type: 'object',
+          properties: {
+            description: { type: 'string', description: 'Item name/description as printed on the bill.' },
+            quantity: { type: 'string', description: 'Quantity as printed, e.g. "2", "1.5 kg", "3 pcs". Empty string if not shown.' },
+            amount: { type: 'number', description: 'Line total for this item, if shown. 0 if not legible or not present.' },
+          },
+          required: ['description'],
+        },
+      },
       confidence: {
         type: 'number',
         description:
@@ -71,7 +85,7 @@ async function extractCfBill(buffer, mimeType) {
           role: 'user',
           content: [
             block,
-            { type: 'text', text: 'This is a photographed or scanned bill/receipt. Extract its details using the record_bill tool. If the image is too unclear to read a field, leave it as an empty string (or 0 for amount) and reflect that in a low confidence score rather than guessing confidently.' },
+            { type: 'text', text: 'This is a photographed or scanned bill/receipt. Extract its details using the record_bill tool, including the invoice/bill number and a line-by-line item breakdown if the bill is itemized. If the image is too unclear to read a field, leave it as an empty string (or 0 for amount) and reflect that in a low confidence score rather than guessing confidently.' },
           ],
         },
       ],
@@ -85,6 +99,12 @@ async function extractCfBill(buffer, mimeType) {
       currency: out.currency || '',
       vendor: out.vendor || '',
       date: out.date || '',
+      invoiceNumber: out.invoiceNumber || '',
+      lineItems: Array.isArray(out.lineItems) ? out.lineItems.map((li) => ({
+        description: (li && li.description) || '',
+        quantity: (li && li.quantity) || '',
+        amount: li && typeof li.amount === 'number' ? li.amount : Number(li && li.amount) || 0,
+      })).filter((li) => li.description) : [],
       confidence: typeof out.confidence === 'number' ? Math.max(0, Math.min(1, out.confidence)) : 0,
       notes: out.notes || '',
     };
