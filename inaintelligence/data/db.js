@@ -407,7 +407,7 @@ async function findUserByUsername(username) {
   }
 
   const member = await pool.query(
-    `SELECT tm.*, a.id AS acc_id, a.name AS acc_name FROM team_members tm
+    `SELECT tm.*, a.id AS acc_id, a.name AS acc_name, a.status AS acc_status FROM team_members tm
      JOIN accounts a ON a.id = tm.account_id WHERE tm.username=$1`,
     [username]
   );
@@ -416,7 +416,7 @@ async function findUserByUsername(username) {
     return {
       role: 'admin',
       user: { id: row.id, username: row.username, name: row.name, passwordHash: row.password_hash, isPrimary: row.is_primary },
-      account: { id: row.acc_id, name: row.acc_name }
+      account: { id: row.acc_id, name: row.acc_name, status: row.acc_status }
     };
   }
   return null;

@@ -55,6 +55,22 @@ function canAccessAccount(req, accountId) {
   return req.session.auth.accountId === accountId;
 }
 
+// Blocks every /api/accounts/:id/* request for a suspended account's own
+// users. Super admins are exempt so they can still open a suspended
+// account to review it / reactivate it. Checked fresh from the DB on every
+// request (not cached in the session), so suspending an account cuts off
+// already-logged-in sessions on their very next API call, not just new
+// logins.
+function requireActiveAccount(req, res, next) {
+  if (req.session.auth.role === 'super_admin') return next();
+  db.findAccount(req.params.id).then((account) => {
+    if (account && account.status === 'suspended') {
+      return res.status(423).json({ error: 'This account is suspended by a super admin.' });
+    }
+    next();
+  }).catch(next);
+}
+
 function asyncRoute(fn) {
   return (req, res) => fn(req, res).catch((err) => {
     console.error(err);
@@ -68,6 +84,9 @@ app.post('/api/login', asyncRoute(async (req, res) => {
   const found = username && await db.findUserByUsername(username);
   if (!found || !db.verifyPassword(password, found.user.passwordHash)) {
     return res.status(401).json({ error: 'Incorrect username or password.' });
+  }
+  if (found.role !== 'super_admin' && found.account && found.account.status === 'suspended') {
+    return res.status(423).json({ error: 'This account has been suspended. Contact your administrator.' });
   }
   req.session.auth = {
     role: found.role,
@@ -133,6 +152,11 @@ app.post('/api/super-admin/accounts', requireAuth, asyncRoute(async (req, res) =
   if (result.error) return res.status(400).json({ error: result.error });
   res.json({ ok: true, accountId: result.accountId, licenseNumber: result.licenseNumber });
 }));
+
+// Applies to every /api/accounts/:id and /api/accounts/:id/* route
+// registered below (leads, tasks, cash flow, team, actions, etc.) — see
+// requireActiveAccount above.
+app.use('/api/accounts/:id', requireAuth, requireActiveAccount);
 
 // ---------- account detail (admin, own account; super admin, any account) ----------
 app.get('/api/accounts/:id', requireAuth, asyncRoute(async (req, res) => {
@@ -392,6 +416,7 @@ app.get('/api/accounts/:id/re/monthly-report', requireAuth, asyncRoute(async (re
 async function findCfAccount(accountId) {
   const account = await db.findAccount(accountId);
   if (!account || account.type !== 'cash_flow') return null;
+  if (account.status === 'suspended') return null;
   return account;
 }
 

@@ -169,10 +169,20 @@
   function loadAccount() {
     fetch('/api/accounts/' + accountId).then(function (res) {
       if (res.status === 401) { window.location.href = '/login.html'; throw new Error('redirect'); }
+      if (res.status === 423) { throw new Error('suspended'); }
       if (!res.ok) throw new Error('load-failed');
       return res.json();
     }).then(render).catch(function (err) {
       if (err.message === 'redirect') return;
+      if (err.message === 'suspended') {
+        document.getElementById('pageLoading').innerHTML =
+          '<div class="suspended-box">' +
+          '<div class="suspended-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg></div>' +
+          '<h2>Account Suspended</h2>' +
+          '<p>This account has been suspended by a super admin.<br>Please contact your administrator.</p>' +
+          '</div>';
+        return;
+      }
       console.error(err);
       document.getElementById('pageLoading').innerHTML = 'Couldn\'t load this dashboard. Try refreshing the page.';
     });
